@@ -10,9 +10,11 @@ For each fiscal year (FY 2020 onward by default):
     every monthly "Cases Closed" .xlsx on the page.
 Using one or the other, never both, avoids counting a case twice.
 
-Each workbook: rows 1-27 are ignored, the header is on row 28 and is checked
-against the expected column list, and the data below it goes into the DuckDB
-table `election_results`.
+Each workbook: everything above the header row is ignored. The header row is
+located by scanning the top of the sheet for the expected column names (it is
+row 18 in FY 2020-2021 and row 28 in later years); if no row matches, the file
+is skipped and reported as a failure. The data below the header goes into the
+DuckDB table `election_results`.
 
 Install:  pip install requests beautifulsoup4 pandas openpyxl duckdb
 Run:      python ingest_election_results.py
@@ -45,7 +47,7 @@ MONTH_NAMES = [
 ]
 MONTH_RE = re.compile(r"(" + "|".join(MONTH_NAMES) + r")[\s_\-]*(\d{4})")
 
-HEADER_ROW = 28  # 1-based row number of the column headers in each workbook
+HEADER_SCAN_ROWS = 60  # how many rows from the top to search for the header row
 TABLE = "election_results"
 
 # (header text in the spreadsheet, database column, DuckDB type)
@@ -185,26 +187,32 @@ def _to_text(value):
     return text or None
 
 
+def find_header_row(raw: pd.DataFrame, expected: list[str]) -> int | None:
+    """Return the 0-based index of the row whose cells match the expected headers."""
+    for i in range(min(HEADER_SCAN_ROWS, len(raw))):
+        row = [_norm(c) for c in raw.iloc[i, : len(expected)]]
+        if row == expected:
+            return i
+    return None
+
+
 def parse_sheet(raw: pd.DataFrame, label: str) -> pd.DataFrame | None:
     """
-    raw = sheet read with header=None. Row HEADER_ROW holds the headers; all
-    rows above it are ignored. Returns a typed DataFrame, or None if the header
-    row does not match the expected columns.
+    raw = sheet read with header=None. Finds the header row (see find_header_row),
+    ignores everything above it, and returns a typed DataFrame, or None if no
+    row in the first HEADER_SCAN_ROWS rows matches the expected columns.
     """
-    if len(raw) < HEADER_ROW:
-        log.warning("%s: only %d rows, expected headers on row %d; skipping", label, len(raw), HEADER_ROW)
-        return None
-
-    header = [_norm(c) for c in raw.iloc[HEADER_ROW - 1]]
     expected = [_norm(h) for h, _, _ in SCHEMA]
-    if header[: len(expected)] != expected:
+    idx = find_header_row(raw, expected)
+    if idx is None:
         log.warning(
-            "%s: row %d does not match the expected headers.\n    expected: %s\n    found:    %s",
-            label, HEADER_ROW, expected, [h for h in header if h],
+            "%s: no row in the first %d rows matches the expected headers.\n    expected: %s",
+            label, HEADER_SCAN_ROWS, expected,
         )
         return None
+    log.info("  %s: header found on row %d", label, idx + 1)
 
-    body = raw.iloc[HEADER_ROW:, : len(expected)].copy()
+    body = raw.iloc[idx + 1:, : len(expected)].copy()
     body.columns = DATA_COLUMNS
     body = body.dropna(how="all")
     body = body[body["case_number"].notna()]  # drop footnotes / blank trailers
@@ -229,13 +237,13 @@ def parse_sheet(raw: pd.DataFrame, label: str) -> pd.DataFrame | None:
 
 
 def read_workbook(path: Path) -> list[pd.DataFrame]:
+    # sheet_name=None reads every sheet and returns {sheet_name: DataFrame}
+    sheets = pd.read_excel(path, sheet_name=None, header=None, dtype=object, engine="openpyxl")
     frames = []
-    with pd.ExcelFile(path, engine="openpyxl") as xl:
-        for sheet in xl.sheet_names:
-            raw = xl.parse(sheet, header=None, dtype=object)
-            df = parse_sheet(raw, f"{path.name}[{sheet}]")
-            if df is not None and not df.empty:
-                frames.append(df)
+    for sheet, raw in sheets.items():
+        df = parse_sheet(raw, f"{path.name}[{sheet}]")
+        if df is not None and not df.empty:
+            frames.append(df)
     return frames
 
 
