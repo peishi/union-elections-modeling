@@ -3,6 +3,8 @@
 Machine learning on union election outcomes to try to learn the structure of
 what factors play the largest role in success.
 
+See notes about data sources and features in this [Google Doc](https://docs.google.com/document/d/1vmgNmOYvHBSOHspAy8-MRatB-HSxv6SZxCioY6TRNMY/edit?usp=sharing)
+
 The project builds a single DuckDB database from three public sources:
 
 - **NLRB cases** — representation elections, results, filings, and participants
