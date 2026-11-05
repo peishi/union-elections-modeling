@@ -1,5 +1,10 @@
-#!/usr/bin/env python3
 """
+ARCHIVED: Originally downloading and parsing from NLRB website directly,
+but processing already done at https://labordata.bunkum.us/. Avoid having
+to deal with some subtleties of spreadsheets having stacked data with more than
+one table when elections have more than one labor org representing.
+
+
 Download NLRB election-report spreadsheets and load them into DuckDB.
 
 Source index: https://www.nlrb.gov/reports/agency-performance/election-reports
@@ -251,7 +256,6 @@ def read_workbook(path: Path) -> list[pd.DataFrame]:
 # DuckDB
 # --------------------------------------------------------------------------
 def init_db(con: duckdb.DuckDBPyConnection, rebuild: bool) -> None:
-    con.execute("DROP VIEW IF EXISTS election_results_monthly")  # left by an earlier version
     if rebuild:
         con.execute(f"DROP TABLE IF EXISTS {TABLE}")
 
