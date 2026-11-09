@@ -21,8 +21,8 @@ The view is created in the same DuckDB file as the source tables.
 
 Usage
 -----
-    uv run python transformations/build_table.py
-    uv run python transformations/build_table.py --view analytical_elections
+    uv run python transformations/build_analytical_view.py
+    uv run python transformations/build_analytical_view.py --view analytical_elections
 """
 
 from __future__ import annotations

@@ -42,7 +42,7 @@ uv run python ingestion/ingest_union_finances.py
 uv run python ingestion/ingest_union_crosswalk.py
 
 # 4. Build the analytical view
-uv run python transformations/build_table.py
+uv run python transformations/build_analytical_view.py
 ```
 
 All output goes to `data/union_elections.duckdb`.
@@ -59,7 +59,7 @@ All output goes to `data/union_elections.duckdb`.
 | `lm_data` | `ingest_union_finances.py` | one row per OLMS annual report |
 | `ar_disbursements_total` | `ingest_union_finances.py` | disbursement totals per LM-2 report |
 | `union_names_crosswalk` | `ingest_union_crosswalk.py` | union name → parent union + OLMS `f_num` |
-| `analytical_elections` | `build_table.py` | view joining elections to matched union finances |
+| `analytical_elections` | `build_analytical_view.py` | view joining elections to matched union finances |
 
 ## Common options
 
@@ -104,7 +104,10 @@ through the crosswalk and keeps a report only when its coverage period
 It includes:
 
 - Filing, election, and election-mode fields requested for modeling.
-- `lm_data` and `ar_disbursements_total` finance fields.
+- `lm_data` and `ar_disbursements_total` finance fields. The disbursement
+  measure is `lm_data.ttl_disbursements`, the total reported on the filing.
+  The itemized `ar_disbursements_total` categories are partial and reconcile
+  with that total in only a minority of reports, so they are not summed.
 - The resolved `election_union_name`, `pred_union_name`, and `pred_f_num`
   diagnostics, so matches can be audited.
 - 20 additional feature columns (employer name, region, eligible voters, vote

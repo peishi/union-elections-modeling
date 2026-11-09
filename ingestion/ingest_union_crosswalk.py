@@ -9,7 +9,7 @@ mapped to a canonical parent name and an OLMS file number (``f_num``), with
 confidence scores.
 
 The table is written to the shared DuckDB file as ``union_names_crosswalk``.
-It is used by ``transformations/build_table.py`` to connect election union
+It is used by ``transformations/build_analytical_view.py`` to connect election union
 names to the OLMS finance data.
 
 Usage
