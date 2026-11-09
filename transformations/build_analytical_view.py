@@ -17,6 +17,8 @@ The view combines:
 The finance rows are joined only when the report's coverage period
 (``pd_covered_from`` .. ``pd_covered_to``) contains the election date.
 
+Only ``RM`` and ``RC`` filings (representation elections) are included.
+
 The view is created in the same DuckDB file as the source tables.
 
 Usage
@@ -174,6 +176,7 @@ base AS (
         ON em."election_id" = e."election_id"
     LEFT JOIN "primary_union" pu
         ON pu."case_number" = f."case_number"
+    WHERE f."case_type" IN ('RM', 'RC')
 )
 SELECT
     b."case_number",

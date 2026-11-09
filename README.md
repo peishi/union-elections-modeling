@@ -97,7 +97,8 @@ Transformation-specific:
 ## Analytical view
 
 `analytical_elections` contains one row per filing × election × election-mode
-record × matched finance report. The finance join uses the union name resolved
+record × matched finance report. Only `RC` and `RM` filings (representation
+elections) are included. The finance join uses the union name resolved
 through the crosswalk and keeps a report only when its coverage period
 (`pd_covered_from` to `pd_covered_to`) contains the election date.
 
@@ -112,7 +113,7 @@ It includes:
   diagnostics, so matches can be audited.
 - 20 additional feature columns (employer name, region, eligible voters, vote
   counts, union affiliation, total receipts/disbursements, etc.).
-- `mode_row_number` and `mode_row_count`: 141 elections have multiple
+- `mode_row_number` and `mode_row_count`: 133 elections have multiple
   `election_mode` rows; filter with `mode_row_number = 1` if one row per
   election is required.
 
@@ -136,6 +137,34 @@ print(
 )
 PY
 ```
+
+## Modeling
+
+The `modeling/` folder contains the analysis scaffold:
+
+| File | Purpose |
+|---|---|
+| `modeling/eda.ipynb` | loads `analytical_elections` and profiles grain, missingness, finance coverage, and both targets |
+| `modeling/training.py` | loads the view, collapses it to one row per election, and builds the regression and classification feature/target frames |
+
+Run the preparation script:
+
+```bash
+uv run python modeling/training.py
+```
+
+The notebook needs a Jupyter kernel, which is not a project dependency:
+
+```bash
+uv run --with jupyter jupyter lab modeling/eda.ipynb
+```
+
+Targets:
+
+- **Regression:** `vote_ratio = votes_for_labor_organization_1 / votes_cast_against_labor_org`.
+  Elections with zero votes against have an undefined ratio and are dropped from
+  the regression dataset.
+- **Classification:** `success = reason_closed == 'Certific. of Representative'`.
 
 ## Notes and caveats
 
