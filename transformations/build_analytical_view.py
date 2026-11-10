@@ -225,6 +225,7 @@ SELECT
     b."voting_unit_id",
     lm."union_name" AS finance_union_name,
     lm."aff_abbr" AS finance_aff_abbr,
+    lm."members",
     lm."form_type",
     lm."ttl_receipts",
     lm."ttl_disbursements",
