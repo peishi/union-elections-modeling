@@ -5,7 +5,7 @@ The view combines:
 
 * ``filing``            one row per NLRB case (completed cases only)
 * ``election``          the most recent election for each case
-* ``election_mode``     ballot/tally details where available
+* ``tally``             per-option vote counts (union vs "No union")
 * ``participant``       the primary union participant for the case
 * ``union_names_crosswalk``
                         election union name -> canonical parent + OLMS f_num
@@ -18,6 +18,12 @@ The finance rows are joined only when the report's coverage period
 
 Only ``RM`` and ``RC`` filings with a ``date_closed`` (i.e. completed cases)
 are included, and only the most recent election per case is kept.
+
+Vote totals come from ``tally`` (``votes_for_union`` / ``votes_against``).
+Elections whose tally has more than two options (a contested multi-union
+ballot) or only a "No union" option are excluded, along with their filings.
+The union name used for finance matching comes from the primary union
+``participant``; ``election_mode`` is not used by this view.
 
 The view is created in the same DuckDB file as the source tables.
 
@@ -47,7 +53,7 @@ DEFAULT_VIEW = "analytical_elections"
 REQUIRED_TABLES = {
     "filing": "ingestion/ingest_nlrb_elections.py",
     "election": "ingestion/ingest_nlrb_elections.py",
-    "election_mode": "ingestion/ingest_nlrb_elections.py",
+    "tally": "ingestion/ingest_nlrb_elections.py",
     "participant": "ingestion/ingest_nlrb_elections.py",
     "lm_data": "ingestion/ingest_union_finances.py",
     "ar_disbursements_total": "ingestion/ingest_union_finances.py",
@@ -111,20 +117,6 @@ primary_union AS (
     ) ranked
     WHERE rn = 1
 ),
-mode_ranked AS (
-    SELECT
-        *,
-        row_number() OVER (
-            PARTITION BY "election_id"
-            ORDER BY
-                "number_of_valid_votes_counted" DESC NULLS LAST,
-                "date_tallied" DESC NULLS LAST,
-                "number_of_eligible_voters" DESC NULLS LAST
-        ) AS mode_row_number,
-        count(*) OVER (PARTITION BY "election_id") AS mode_row_count
-    FROM "election_mode"
-    WHERE "election_id" IS NOT NULL
-),
 election_latest AS (
     SELECT
         *,
@@ -134,6 +126,14 @@ election_latest AS (
         ) AS election_rank,
         count(*) OVER (PARTITION BY "case_number") AS n_elections
     FROM "election"
+),
+tally_votes AS (
+    SELECT
+        "election_id",
+        sum("votes") FILTER (WHERE "option" <> 'No union') AS votes_for_union,
+        max("votes") FILTER (WHERE "option" = 'No union') AS votes_against
+    FROM "tally"
+    GROUP BY "election_id"
 ),
 base AS (
     SELECT
@@ -148,12 +148,10 @@ base AS (
         e."tally_type",
         e."unit_size",
         e."date" AS election_date,
-        em."votes_for_labor_organization_1",
-        em."votes_for_labor_organization_2",
-        em."votes_for_labor_organization_3",
-        em."votes_cast_against_labor_org",
+        tv."votes_for_union",
+        tv."votes_against",
 
-        -- Feature columns from filing / election / election_mode.
+        -- Feature columns from filing / election.
         f."name" AS employer_name,
         f."region_assigned",
         f."status" AS filing_status,
@@ -162,36 +160,30 @@ base AS (
         f."certified_representative",
         e."ballot_type",
         e."voting_unit_id",
-        em."labor_organization_1_name",
-        em."labor_organization_2_name",
-        em."labor_organization_3_name",
-        em."number_of_eligible_voters" AS mode_number_of_eligible_voters,
-        em."number_of_valid_votes_counted",
-        em."number_of_challenged_ballots",
-        em."election_mode",
-        em."mode_row_number",
-        em."mode_row_count",
 
         -- Case-level flags.
         COALESCE(e."n_elections", 0) > 1 AS more_than_one_election,
 
         -- Join keys and match diagnostics.
-        COALESCE(
-            NULLIF(trim(em."labor_organization_1_name"), ''),
-            pu."participant"
-        ) AS election_union_name,
+        pu."participant" AS election_union_name,
         pu."participant" AS union_participant,
         pu."type" AS union_participant_type
     FROM "filing" f
     LEFT JOIN election_latest e
         ON e."case_number" = f."case_number"
        AND e."election_rank" = 1
-    LEFT JOIN mode_ranked em
-        ON em."election_id" = e."election_id"
+    LEFT JOIN tally_votes tv
+        ON tv."election_id" = e."election_id"
     LEFT JOIN "primary_union" pu
         ON pu."case_number" = f."case_number"
     WHERE f."case_type" IN ('RM', 'RC')
       AND f."date_closed" IS NOT NULL
+      AND e."election_id" NOT IN (
+          SELECT "election_id" FROM "tally"
+          GROUP BY "election_id"
+          HAVING count(*) > 2
+              OR (count(*) = 1 AND max("option") = 'No union')
+      )
 )
 SELECT
     b."case_number",
@@ -206,10 +198,8 @@ SELECT
     b."unit_size",
     b."election_date",
     b."more_than_one_election",
-    b."votes_for_labor_organization_1",
-    b."votes_for_labor_organization_2",
-    b."votes_for_labor_organization_3",
-    b."votes_cast_against_labor_org",
+    b."votes_for_union",
+    b."votes_against",
 
     lm."rpt_id",
     lm."yr_covered",
@@ -233,15 +223,6 @@ SELECT
     b."certified_representative",
     b."ballot_type",
     b."voting_unit_id",
-    b."labor_organization_1_name",
-    b."labor_organization_2_name",
-    b."labor_organization_3_name",
-    b."mode_number_of_eligible_voters",
-    b."number_of_valid_votes_counted",
-    b."number_of_challenged_ballots",
-    b."election_mode",
-    b."mode_row_number",
-    b."mode_row_count",
     lm."union_name" AS finance_union_name,
     lm."aff_abbr" AS finance_aff_abbr,
     lm."form_type",
@@ -298,8 +279,9 @@ def report(
             count(DISTINCT "case_number") AS filings,
             count(DISTINCT "election_id") AS elections,
             count(*) FILTER (
-                WHERE "labor_organization_1_name" IS NOT NULL
-            ) AS mode_rows,
+                WHERE "votes_for_union" IS NOT NULL
+                   OR "votes_against" IS NOT NULL
+            ) AS tally_rows,
             count(*) FILTER (WHERE "rpt_id" IS NOT NULL) AS finance_rows,
             count(DISTINCT "case_number") FILTER (
                 WHERE "rpt_id" IS NOT NULL
@@ -314,7 +296,7 @@ def report(
         print(f"Rows: {row[0]:,}")
         print(f"Distinct filings: {row[1]:,}")
         print(f"Distinct elections: {row[2]:,}")
-        print(f"Rows with election_mode data: {row[3]:,}")
+        print(f"Rows with tally vote data: {row[3]:,}")
         print(f"Rows with finance match: {row[4]:,}")
         print(f"Filings with at least one finance match: {row[5]:,}")
 
@@ -335,20 +317,6 @@ def report(
         print("Finance reports per election:")
         for n_reports, elections in fanout:
             print(f"  {n_reports:>2} report(s): {elections:,} elections")
-
-    multi_mode = connection.execute(
-        f"""
-        SELECT count(*)
-        FROM (
-            SELECT "election_id"
-            FROM "{view_name}"
-            WHERE "mode_row_count" > 1
-            GROUP BY "election_id"
-        )
-        """
-    ).fetchone()
-    if multi_mode:
-        print(f"Elections with multiple election_mode rows: {multi_mode[0]:,}")
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:

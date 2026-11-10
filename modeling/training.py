@@ -4,10 +4,10 @@
 Targets
 -------
 Regression
-    ``vote_ratio = votes_for_labor_organization_1 / votes_cast_against_labor_org``
+    ``vote_ratio = votes_for_union / votes_against``
 
-    Elections with zero votes against have an undefined ratio; those rows are
-    left as NaN and dropped when the regression dataset is built.
+    Elections with zero or missing votes against have an undefined ratio; those
+    rows are left as NaN and dropped when the regression dataset is built.
 
 Classification
     ``success = reason_closed == "Certific. of Representative"``
@@ -45,7 +45,6 @@ FEATURES = [
     "unit_size",
     "filing_number_of_eligible_voters",
     "number_of_voters_on_petition_or_charge",
-    "election_mode",
     # union finance
     "ttl_receipts",
     "ttl_disbursements",
@@ -64,7 +63,6 @@ CATEGORICAL_FEATURES = [
     "region_assigned",
     "filing_status",
     "ballot_type",
-    "election_mode",
     "finance_aff_abbr",
     "form_type",
 ]
@@ -82,12 +80,11 @@ def load_view(db_path: Path = DEFAULT_DB, view: str = VIEW_NAME) -> pd.DataFrame
 def dedupe_elections(df: pd.DataFrame) -> pd.DataFrame:
     """Collapse the view to one row per election.
 
-    The view can hold several ``election_mode`` records (and, rarely, several
-    finance reports) per election.  Prefer the first election-mode row and keep
-    the first remaining row per ``election_id``.
+    The view is already one row per election, but the finance join can rarely
+    produce more than one row.  Prefer a row with a finance match.
     """
     return (
-        df.sort_values(["election_id", "mode_row_number"], na_position="last")
+        df.sort_values(["election_id", "rpt_id"], na_position="last")
         .drop_duplicates(subset="election_id", keep="first")
         .reset_index(drop=True)
     )
@@ -97,8 +94,8 @@ def add_targets(df: pd.DataFrame) -> pd.DataFrame:
     """Add the regression and classification targets."""
     df = df.copy()
 
-    against = df["votes_cast_against_labor_org"].replace(0, np.nan)
-    df["vote_ratio"] = df["votes_for_labor_organization_1"] / against
+    against = df["votes_against"].replace(0, np.nan)
+    df["vote_ratio"] = df["votes_for_union"] / against
 
     df["success"] = (
         df["reason_closed"]

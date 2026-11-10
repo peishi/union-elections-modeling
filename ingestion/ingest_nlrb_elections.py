@@ -13,6 +13,7 @@ Tables written (all in the target DuckDB file):
     election         one row per election
     election_result  one row per election result
     election_mode    election-mode / tally details (may be multiple per case)
+    tally            per-option vote counts, keyed by election_id
     filing           one row per NLRB case referenced by the ingested elections
 
 By default the cutoff is the *election date* (2010-01-01), not the filing
@@ -62,7 +63,7 @@ def _table_filter(table: str, since: str | None) -> str:
     if table == "election":
         return "WHERE \"date\" >= :since" if since else ""
 
-    if table == "election_result":
+    if table in {"election_result", "tally"}:
         if since:
             return (
                 'WHERE "election_id" IN (\n'
@@ -113,6 +114,16 @@ TABLE_SPECS: tuple[TableSpec, ...] = (
         ),
         order_by='"election_id"',
         primary_key="election_id",
+    ),
+    TableSpec(
+        name="tally",
+        columns=(
+            Column("election_id", "BIGINT"),
+            Column("option", "VARCHAR"),
+            Column("votes", "BIGINT"),
+            Column("created_at", "TIMESTAMP"),
+        ),
+        order_by='"election_id", "option"',
     ),
     TableSpec(
         name="election_mode",

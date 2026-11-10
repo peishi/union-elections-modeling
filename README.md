@@ -54,6 +54,7 @@ All output goes to `data/union_elections.duckdb`.
 | `election` | `ingest_nlrb_elections.py` | one row per election |
 | `election_result` | `ingest_nlrb_elections.py` | one row per election result |
 | `election_mode` | `ingest_nlrb_elections.py` | ballot/tally details (subset of elections) |
+| `tally` | `ingest_nlrb_elections.py` | per-option vote counts, keyed by `election_id` |
 | `filing` | `ingest_nlrb_elections.py` | NLRB cases linked to the ingested elections |
 | `participant` | `ingest_nlrb_elections.py` | participants for those cases |
 | `lm_data` | `ingest_union_finances.py` | one row per OLMS annual report |
@@ -96,17 +97,20 @@ Transformation-specific:
 
 ## Analytical view
 
-`analytical_elections` contains one row per filing × election-mode record ×
-matched finance report. Only `RC` and `RM` filings that are **completed**
-(`date_closed` is not null) are included, and for each case only the **most
-recent election** is kept (earlier elections for the same case are dropped).
-The finance join uses the union name resolved through the crosswalk and keeps a
-report only when its coverage period (`pd_covered_from` to `pd_covered_to`)
-contains the election date.
+`analytical_elections` contains one row per completed `RC`/`RM` case and its
+most recent election, plus the matched finance report. Only filings with a
+`date_closed` are included, and earlier elections for the same case are dropped.
+The union name used for finance matching comes from the primary union
+`participant` (not `election_mode`), and a report is kept only when its coverage
+period (`pd_covered_from` to `pd_covered_to`) contains the election date.
 
 It includes:
 
-- Filing, election, and election-mode fields requested for modeling.
+- Filing and election fields requested for modeling.
+- **Vote totals from `tally`:** `votes_for_union` (the union option) and
+  `votes_against` (the `'No union'` option). Elections whose tally has more
+  than two options (contested multi-union ballots) or only a `'No union'`
+  option are excluded, along with their filings.
 - `lm_data` and `ar_disbursements_total` finance fields. The disbursement
   measure is `lm_data.ttl_disbursements`, the total reported on the filing.
   The itemized `ar_disbursements_total` categories are partial and reconcile
@@ -117,9 +121,6 @@ It includes:
   counts, union affiliation, total receipts/disbursements, etc.).
 - `more_than_one_election`: boolean flag set when the case had more than one
   election in the source data (only the latest is retained in the view).
-- `mode_row_number` and `mode_row_count`: a small number of elections still
-  have multiple `election_mode` rows; filter with `mode_row_number = 1` if one
-  row per election is required.
 
 Example query:
 
@@ -165,15 +166,14 @@ uv run --with jupyter jupyter lab modeling/eda.ipynb
 
 Targets:
 
-- **Regression:** `vote_ratio = votes_for_labor_organization_1 / votes_cast_against_labor_org`.
-  Elections with zero votes against have an undefined ratio and are dropped from
-  the regression dataset.
+- **Regression:** `vote_ratio = votes_for_union / votes_against`.
+  Elections with zero or missing votes against have an undefined ratio and are
+  dropped from the regression dataset.
 - **Classification:** `success = reason_closed == 'Certific. of Representative'`.
 
 ## Notes and caveats
 
-- `election_mode` covers only a subset of elections. The view uses left joins,
-  so filings without an `election_mode` row are still included.
+- `election_mode` is still ingested but is not used by `analytical_elections`.
 - `ar_disbursements_total` is effectively LM-2-only. For LM-3/LM-4 unions, use
   `lm_data.ttl_disbursements`.
 - The `filing` and `participant` tables are limited to cases linked to the
