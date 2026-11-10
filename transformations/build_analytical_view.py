@@ -3,9 +3,8 @@
 
 The view combines:
 
-* ``filing``            one row per NLRB case (all rows, including cases
-                        without an ``election_mode`` record)
-* ``election``          elections for each case
+* ``filing``            one row per NLRB case (completed cases only)
+* ``election``          the most recent election for each case
 * ``election_mode``     ballot/tally details where available
 * ``participant``       the primary union participant for the case
 * ``union_names_crosswalk``
@@ -17,7 +16,8 @@ The view combines:
 The finance rows are joined only when the report's coverage period
 (``pd_covered_from`` .. ``pd_covered_to``) contains the election date.
 
-Only ``RM`` and ``RC`` filings (representation elections) are included.
+Only ``RM`` and ``RC`` filings with a ``date_closed`` (i.e. completed cases)
+are included, and only the most recent election per case is kept.
 
 The view is created in the same DuckDB file as the source tables.
 
@@ -125,6 +125,16 @@ mode_ranked AS (
     FROM "election_mode"
     WHERE "election_id" IS NOT NULL
 ),
+election_latest AS (
+    SELECT
+        *,
+        row_number() OVER (
+            PARTITION BY "case_number"
+            ORDER BY "date" DESC NULLS LAST, "election_id" DESC
+        ) AS election_rank,
+        count(*) OVER (PARTITION BY "case_number") AS n_elections
+    FROM "election"
+),
 base AS (
     SELECT
         f."case_number",
@@ -162,6 +172,9 @@ base AS (
         em."mode_row_number",
         em."mode_row_count",
 
+        -- Case-level flags.
+        COALESCE(e."n_elections", 0) > 1 AS more_than_one_election,
+
         -- Join keys and match diagnostics.
         COALESCE(
             NULLIF(trim(em."labor_organization_1_name"), ''),
@@ -170,13 +183,15 @@ base AS (
         pu."participant" AS union_participant,
         pu."type" AS union_participant_type
     FROM "filing" f
-    LEFT JOIN "election" e
+    LEFT JOIN election_latest e
         ON e."case_number" = f."case_number"
+       AND e."election_rank" = 1
     LEFT JOIN mode_ranked em
         ON em."election_id" = e."election_id"
     LEFT JOIN "primary_union" pu
         ON pu."case_number" = f."case_number"
     WHERE f."case_type" IN ('RM', 'RC')
+      AND f."date_closed" IS NOT NULL
 )
 SELECT
     b."case_number",
@@ -190,6 +205,7 @@ SELECT
     b."tally_type",
     b."unit_size",
     b."election_date",
+    b."more_than_one_election",
     b."votes_for_labor_organization_1",
     b."votes_for_labor_organization_2",
     b."votes_for_labor_organization_3",

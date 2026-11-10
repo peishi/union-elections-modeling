@@ -96,11 +96,13 @@ Transformation-specific:
 
 ## Analytical view
 
-`analytical_elections` contains one row per filing × election × election-mode
-record × matched finance report. Only `RC` and `RM` filings (representation
-elections) are included. The finance join uses the union name resolved
-through the crosswalk and keeps a report only when its coverage period
-(`pd_covered_from` to `pd_covered_to`) contains the election date.
+`analytical_elections` contains one row per filing × election-mode record ×
+matched finance report. Only `RC` and `RM` filings that are **completed**
+(`date_closed` is not null) are included, and for each case only the **most
+recent election** is kept (earlier elections for the same case are dropped).
+The finance join uses the union name resolved through the crosswalk and keeps a
+report only when its coverage period (`pd_covered_from` to `pd_covered_to`)
+contains the election date.
 
 It includes:
 
@@ -113,9 +115,11 @@ It includes:
   diagnostics, so matches can be audited.
 - 20 additional feature columns (employer name, region, eligible voters, vote
   counts, union affiliation, total receipts/disbursements, etc.).
-- `mode_row_number` and `mode_row_count`: 133 elections have multiple
-  `election_mode` rows; filter with `mode_row_number = 1` if one row per
-  election is required.
+- `more_than_one_election`: boolean flag set when the case had more than one
+  election in the source data (only the latest is retained in the view).
+- `mode_row_number` and `mode_row_count`: a small number of elections still
+  have multiple `election_mode` rows; filter with `mode_row_number = 1` if one
+  row per election is required.
 
 Example query:
 
