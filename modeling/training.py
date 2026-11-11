@@ -17,10 +17,13 @@ Usage
 from __future__ import annotations
 
 from pathlib import Path
+from sklearn.model_selection import train_test_split
+from sklearn.feature_extraction import DictVectorizer
 
 import duckdb
 import numpy as np
 import pandas as pd
+import datetime
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DB = PROJECT_ROOT / "data" / "union_elections.duckdb"
@@ -34,15 +37,12 @@ FEATURES = [
     "case_type",
     "state",
     "unit_size",
-    "filing_number_of_eligible_voters",
+    "turnout",
+    "days_to_election",
     # union finance
-    "ttl_receipts",
-    "ttl_disbursements",
-    "representational",
-    "political",
-    "contributions",
-    "general_overhead",
-    "union_administration",
+    "log_members"
+    "log_rep_per_mem",
+    "log_admin_per_mem",
     "finance_aff_abbr",
 ]
 
@@ -96,9 +96,9 @@ def preprocess_filter_elections(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def add_calculated_cols(df: pd.DataFrame) -> pd.DataFrame:
+def calc_finance_cols(df: pd.DataFrame) -> pd.DataFrame:
     """Calculated columns like spending per member by category"""
-    # First only select rows where the relevant columns are not null
+    # First only select rows where the relevant columns are not null. These are LM-2 reports
     exist_finance = df[['ttl_disbursements', 'representational', 'political', 'members']].apply(
         lambda row: all([pd.notna(x) for x in row]), axis=1
     )
@@ -118,8 +118,32 @@ def add_calculated_cols(df: pd.DataFrame) -> pd.DataFrame:
     fin_calc['log_rep_per_mem'] = np.log(fin_calc['rep_per_mem'] + 1)
     fin_calc['log_admin_per_mem'] = np.log(fin_calc['admin_per_mem'] + 1)
 
+    # Log number of members
+    fin_calc['log_members'] = np.log(fin_calc['members'])
+
+    # Merge to original
     cols_to_merge = ['log_rep_per_mem', 'log_admin_per_mem', 'case_number']
     df = df.merge(fin_calc[cols_to_merge], how='left', on='case_number')
+
+    return df
+
+
+def calc_election_cols(df: pd.DataFrame) -> pd.DataFrame:
+    """Election calculations: days from filing to election, turnout"""
+    # Days to election
+    df['days_to_election'] = int(
+        (df['election_date'] - df['date_filed']) / datetime.timedelta(days=1)
+    )
+    invalid = df['days_to_election'] < 0
+    df.loc[invalid, 'days_to_election'] = None
+    df.loc[~invalid, 'log_days_to_election'] = np.log(df.loc[~invalid, 'days_to_election'] + 0.1)  # 0.1 day as buffer for 0s
+
+    # Turnout
+    nonzero = df['filing_number_of_eligible_voters'] > 0
+    df.loc[nonzero, 'turnout'] = df.loc[nonzero, 'total_votes'] / df.loc[nonzero, 'filing_number_of_eligible_voters']
+    invalid = df['turnout'] > 1.0
+    df.loc[invalid, 'turnout'] = None
+
     return df
 
 
@@ -140,38 +164,31 @@ def add_targets(df: pd.DataFrame) -> pd.DataFrame:
 def regression_dataset(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
     """Feature frame and ``vote_ratio`` target, dropping undefined."""
     data = add_targets(df).dropna(subset=["net_margin"])
-    return data[FEATURES].copy(), data["vote_ratio"].copy()
+    return data[FEATURES + ["net_margin"]].copy()
 
 
 def classification_dataset(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
     """Feature frame and binary ``success`` target."""
     data = add_targets(df).dropna(subset=["success"])
-    return data[FEATURES].copy(), data["success"].astype(int).copy()
+    return data[FEATURES + "success"].copy()
 
 
 def main() -> int:
     elections = dedupe_elections(load_view())
     elections = preprocess_filter_elections(elections)
 
-    elections = add_calculated_cols(elections)
+    elections = calc_finance_cols(elections)
+    elections = calc_election_cols(elections)
 
-    X_reg, y_reg = regression_dataset(elections)
-    X_clf, y_clf = classification_dataset(elections)
+    data_reg = regression_dataset(elections)
+    data_clf = classification_dataset(elections)
 
-    print(f"Elections in view: {len(elections):,}")
-    print(
-        f"Regression: {len(X_reg):,} rows, "
-    )
-    print(
-        f"Classification: {len(X_clf):,} rows, "
-        f"success rate {y_clf.mean():.1%}"
-    )
     print()
     print("Feature columns:", ", ".join(FEATURES))
     print("Categorical columns:", ", ".join(CATEGORICAL_FEATURES))
     print()
-    print(X_reg.head())
 
+    
     
     return 0
 
