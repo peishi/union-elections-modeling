@@ -70,7 +70,7 @@ LM_DATA = TableSpec(
     columns=(
         Column("union_name", "VARCHAR"),
         Column("aff_abbr", "VARCHAR"),
-        Column("f_num", "BIGINT"),
+        Column("f_num", "BIGINT"),  # Note that this is Int on labordata but maybe should be string since has leading zeros
         Column("fye", "BIGINT"),
         Column("unit_name", "VARCHAR"),
         Column("est_date", "DATE"),

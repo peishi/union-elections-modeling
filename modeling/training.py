@@ -4,16 +4,10 @@
 Targets
 -------
 Regression
-    ``vote_ratio = votes_for_union / votes_against``
-
-    Elections with zero or missing votes against have an undefined ratio; those
-    rows are left as NaN and dropped when the regression dataset is built.
+    ``net_margin = votes_for_union - votes_against / <total_votes_cast>```
 
 Classification
     ``success = reason_closed == "Certific. of Representative"``
-
-No model is fitted here yet.  This module only loads the view, collapses it to
-one row per election, and builds the feature/target frames.
 
 Usage
 -----
@@ -39,12 +33,8 @@ FEATURES = [
     # filing / election
     "case_type",
     "state",
-    "region_assigned",
-    "filing_status",
-    "ballot_type",
     "unit_size",
     "filing_number_of_eligible_voters",
-    "number_of_voters_on_petition_or_charge",
     # union finance
     "ttl_receipts",
     "ttl_disbursements",
@@ -54,17 +44,12 @@ FEATURES = [
     "general_overhead",
     "union_administration",
     "finance_aff_abbr",
-    "form_type",
 ]
 
 CATEGORICAL_FEATURES = [
     "case_type",
     "state",
-    "region_assigned",
-    "filing_status",
-    "ballot_type",
     "finance_aff_abbr",
-    "form_type",
 ]
 
 
@@ -90,12 +75,59 @@ def dedupe_elections(df: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def preprocess_filter_elections(df: pd.DataFrame) -> pd.DataFrame:
+    """Remove elections that we don't want
+    
+    Should consider only single labor organization elections which is the vast majority.
+    """
+    relevant = df['ballot_type'].isin(['Single Labor Organization', 'Revised Single Labor Org'])
+    df = df[relevant]
+
+    # Note that there are 2 cases with filing_status = 'Open' but with non-null date_closed. Include anyway.
+
+    # NAs in vote cols are actually 0s
+    vote_cols = ['votes_for_union', 'votes_against']
+    df[vote_cols] = df[vote_cols].where(pd.notna(df[vote_cols]), 0)
+
+    # Remove any rows where total votes is 0
+    df['total_votes'] = df['votes_for_union'] + df['votes_against']
+    df = df[df['total_votes'] > 0]
+
+    return df
+
+
+def add_calculated_cols(df: pd.DataFrame) -> pd.DataFrame:
+    """Calculated columns like spending per member by category"""
+    # First only select rows where the relevant columns are not null
+    exist_finance = df[['ttl_disbursements', 'representational', 'political', 'members']].apply(
+        lambda row: all([pd.notna(x) for x in row]), axis=1
+    )
+    # Prevent divide by zero errors
+    nonzero = (df['ttl_disbursements'] != 0) & (df['members'] != 0)
+    fin_calc = df[exist_finance & nonzero].copy()
+
+    fin_calc['rep_per_mem'] = fin_calc['representational'] / fin_calc['members']
+    fin_calc['admin_per_mem'] = fin_calc['union_administration'] / fin_calc['ttl_disbursements']
+
+    # Choosing cutoffs based on EDA of which unions are reporting spending at different levels
+    cutoff_rep = fin_calc['rep_per_mem'] > 5000
+    cutoff_admin = fin_calc['admin_per_mem'] > 10000
+    fin_calc = fin_calc[ (~cutoff_rep) & (~cutoff_admin) ]
+
+    # Take log to get better fit. Add 1 to prevent log blowing up. Means error of $1/mem of spending which is negligible.
+    fin_calc['log_rep_per_mem'] = np.log(fin_calc['rep_per_mem'] + 1)
+    fin_calc['log_admin_per_mem'] = np.log(fin_calc['admin_per_mem'] + 1)
+
+    cols_to_merge = ['log_rep_per_mem', 'log_admin_per_mem', 'case_number']
+    df = df.merge(fin_calc[cols_to_merge], how='left', on='case_number')
+    return df
+
+
 def add_targets(df: pd.DataFrame) -> pd.DataFrame:
     """Add the regression and classification targets."""
     df = df.copy()
 
-    against = df["votes_against"].replace(0, np.nan)
-    df["vote_ratio"] = df["votes_for_union"] / against
+    df["net_margin"] = (df["votes_for_union"] - df["votes_against"]) / df["total_votes"]
 
     df["success"] = (
         df["reason_closed"]
@@ -106,8 +138,8 @@ def add_targets(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def regression_dataset(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
-    """Feature frame and ``vote_ratio`` target, dropping undefined ratios."""
-    data = add_targets(df).dropna(subset=["vote_ratio"])
+    """Feature frame and ``vote_ratio`` target, dropping undefined."""
+    data = add_targets(df).dropna(subset=["net_margin"])
     return data[FEATURES].copy(), data["vote_ratio"].copy()
 
 
@@ -119,6 +151,9 @@ def classification_dataset(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
 
 def main() -> int:
     elections = dedupe_elections(load_view())
+    elections = preprocess_filter_elections(elections)
+
+    elections = add_calculated_cols(elections)
 
     X_reg, y_reg = regression_dataset(elections)
     X_clf, y_clf = classification_dataset(elections)
@@ -126,7 +161,6 @@ def main() -> int:
     print(f"Elections in view: {len(elections):,}")
     print(
         f"Regression: {len(X_reg):,} rows, "
-        f"vote_ratio {y_reg.min():.2f} .. {y_reg.max():.2f}"
     )
     print(
         f"Classification: {len(X_clf):,} rows, "
@@ -138,7 +172,7 @@ def main() -> int:
     print()
     print(X_reg.head())
 
-    # TODO: encode categoricals and fit/evaluate regression and classification.
+    
     return 0
 
 
