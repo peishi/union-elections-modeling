@@ -1,12 +1,13 @@
-# union-elections-modeling
+# NLRB Elections Modeling
 
 Machine learning on union election outcomes to try to learn the structure of
 what factors play the largest role in success.
 
-See notes about data sources and features in this [Google Doc](https://docs.google.com/document/d/1vmgNmOYvHBSOHspAy8-MRatB-HSxv6SZxCioY6TRNMY/edit?usp=sharing)
+See additional background in this [Google Doc](https://docs.google.com/document/d/1Lqqyjd6rrg9wdLglbIX5ORfRwJgbsmGgaqrzT2W90w8/edit?usp=sharing)
 
-The project builds a single DuckDB database from three public sources:
+The data source for this project is the labordata website: <https://labordata.bunkum.us/nlrb>
 
+Specifically, we ingest the following datasets (composed of multiple tables) into a DuckDB instance.
 - **NLRB cases** — representation elections, results, filings, and participants
   from <https://labordata.bunkum.us/nlrb>
 - **OLMS union finances** — LM-2/LM-3/LM-4 annual reports from
@@ -14,6 +15,31 @@ The project builds a single DuckDB database from three public sources:
 - **Union name crosswalk** — precomputed entity resolution from election union
   names to OLMS file numbers from
   <https://labordata.bunkum.us/union_names_crosswalk>
+
+## Project Design
+The project proceeds in 3 steps
+- **Ingestion**: Of 8 tables from the labordata website, keeping same schema
+- **Transformation**: Joining raw data into a single flat SQL view for analysis
+- **Modeling**: With feature engineering and initial model evaluation
+
+Folder structure
+```
+union-elections-modeling/
+├── ingestion/
+|    ├── common.py
+|    ├── ingest_nlrb_elections.py
+|    ├── ingest_union_crosswalk.py
+|    └── ingest_union_finances.py
+├── transformations/
+|    └── build_analytical_view.py
+└── modeling/
+     ├── __init__.py
+     ├── eda.ipynb
+     ├── training.py
+     └── training.ipynb
+```
+
+The `training.py` file contains the feature engineering pipelines 
 
 ## Requirements
 
@@ -53,13 +79,13 @@ All output goes to `data/union_elections.duckdb`.
 |---|---|---|
 | `election` | `ingest_nlrb_elections.py` | one row per election |
 | `election_result` | `ingest_nlrb_elections.py` | one row per election result |
-| `election_mode` | `ingest_nlrb_elections.py` | ballot/tally details (subset of elections) |
+| `election_mode` | `ingest_nlrb_elections.py` | additional detail on elections from FOIA |
 | `tally` | `ingest_nlrb_elections.py` | per-option vote counts, keyed by `election_id` |
 | `filing` | `ingest_nlrb_elections.py` | NLRB cases linked to the ingested elections |
 | `participant` | `ingest_nlrb_elections.py` | participants for those cases |
 | `lm_data` | `ingest_union_finances.py` | one row per OLMS annual report |
-| `ar_disbursements_total` | `ingest_union_finances.py` | disbursement totals per LM-2 report |
-| `union_names_crosswalk` | `ingest_union_crosswalk.py` | union name → parent union + OLMS `f_num` |
+| `ar_disbursements_total` | `ingest_union_finances.py` | disbursement breakdowns by category per LM-2 report  |
+| `union_names_crosswalk` | `ingest_union_crosswalk.py` | union name → OLMS report name + parent union + `f_num` |
 | `analytical_elections` | `build_analytical_view.py` | view joining elections to matched union finances |
 
 ## Common options
@@ -101,12 +127,12 @@ Transformation-specific:
 most recent election, plus the matched finance report. Only filings with a
 `date_closed` are included, and earlier elections for the same case are dropped.
 The union name used for finance matching comes from the primary union
-`participant` (not `election_mode`), and a report is kept only when its coverage
+`participant`, and a report is kept only when its coverage
 period (`pd_covered_from` to `pd_covered_to`) contains the election date.
 
 It includes:
 
-- Filing and election fields requested for modeling.
+- Filing and election fields relevant to modeling.
 - **Vote totals from `tally`:** `votes_for_union` (the union option) and
   `votes_against` (the `'No union'` option). Elections whose tally has more
   than two options (contested multi-union ballots) or only a `'No union'`
@@ -117,8 +143,7 @@ It includes:
   with that total in only a minority of reports, so they are not summed.
 - The resolved `election_union_name`, `pred_union_name`, and `pred_f_num`
   diagnostics, so matches can be audited.
-- 20 additional feature columns (employer name, region, eligible voters, vote
-  counts, union affiliation, total receipts/disbursements, etc.).
+- Additional feature columns to be tested in the future.
 - `more_than_one_election`: boolean flag set when the case had more than one
   election in the source data (only the latest is retained in the view).
 
@@ -149,8 +174,9 @@ The `modeling/` folder contains the analysis scaffold:
 
 | File | Purpose |
 |---|---|
-| `modeling/eda.ipynb` | loads `analytical_elections` and profiles grain, missingness, finance coverage, and both targets |
-| `modeling/training.py` | loads the view, collapses it to one row per election, and builds the regression and classification feature/target frames |
+| `modeling/eda.ipynb` | Loads `analytical_elections` and profiles target variable, missingness, union finances, and election features. |
+| `modeling/training.py` | Loads the view, calculates the regression and classification feature/target variables. Eventually will contain finished training pipeline. |
+| `modeling/training.ipynb` | Tests various machine learning models to determine which model is best.  | 
 
 Run the preparation script:
 
@@ -158,18 +184,11 @@ Run the preparation script:
 uv run python modeling/training.py
 ```
 
-The notebook needs a Jupyter kernel, which is not a project dependency:
+Run the exploratory data analysis:
 
 ```bash
 uv run --with jupyter jupyter lab modeling/eda.ipynb
 ```
-
-Targets:
-
-- **Regression:** `vote_ratio = votes_for_union / votes_against`.
-  Elections with zero or missing votes against have an undefined ratio and are
-  dropped from the regression dataset.
-- **Classification:** `success = reason_closed == 'Certific. of Representative'`.
 
 ## Notes and caveats
 
