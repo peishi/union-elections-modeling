@@ -81,7 +81,7 @@ docker build -t nlrb_elections_model .
 docker run -it --rm -p 8080:8080 nlrb_elections_model:latest
 ```
 
-## Running the pipeline
+## Data Ingestion and Transformation
 
 Run the steps in this order. Every ingestion script is idempotent and replaces
 only the tables it owns, so reruns are safe.
