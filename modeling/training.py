@@ -19,11 +19,15 @@ from __future__ import annotations
 from pathlib import Path
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction import DictVectorizer
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import roc_auc_score
+from sklearn.pipeline import make_pipeline, Pipeline
 
 import duckdb
 import numpy as np
 import pandas as pd
 import datetime
+import pickle
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DB = PROJECT_ROOT / "data" / "union_elections.duckdb"
@@ -231,7 +235,52 @@ def get_linear_regression(df: pd.DataFrame) -> pd.DataFrame:
     del df_val['net_margin']
     del df_test['net_margin']
 
+
+def train_random_forest(data_clf: pd.DataFrame) -> Pipeline:
+    """Only test, train split since validation was used in notebook portion
     
+    Saves model to pickle
+    """
+    df_full_train, df_test = train_test_split(data_clf, test_size=0.2, random_state=1)
+
+    y_full_train = df_full_train['success']
+    y_test = df_test['success']
+
+    dict_full_train = df_full_train[FEATURES].to_dict(orient='records')
+    dict_test = df_test[FEATURES].to_dict(orient='records')
+
+    print(f"Test: {len(dict_test)} rows, Train: {len(dict_full_train)} rows")
+
+    # Based on parameter tuning in training.ipynb, below are the best parameters
+    max_depth = 15
+    min_samples_leaf = 1
+    n = 450
+
+    pipeline = make_pipeline(
+        DictVectorizer(),
+        RandomForestClassifier(
+            n_estimators=n,
+            max_depth=max_depth,
+            min_samples_leaf=min_samples_leaf,
+            random_state=1
+        )
+    )
+    pipeline.fit(dict_full_train, y_full_train)
+
+    y_pred = pipeline.predict_proba(dict_test)[:, 1]
+    auc = roc_auc_score(y_test, y_pred)
+
+    print(f"\nWith max_depth: {max_depth}, min_samples_leaf: {min_samples_leaf}, and n_estimators: {n}")
+    print(f"ROC AUC with full training data on test dataset is {auc}")
+
+
+def save_model(pipeline: Pipeline) -> None:
+    """"""
+    filename = PROJECT_ROOT / "data" / "random_forest_model.bin"
+    with open(filename, 'wb') as f_out:
+        pickle.dump(pipeline, f_out)
+
+    print(f"\nModel saved to {Path(filename).resolve()}")
 
 
 def main() -> int:
@@ -241,7 +290,7 @@ def main() -> int:
     elections = calc_finance_cols(elections)
     elections = calc_election_cols(elections)
 
-    data_reg = regression_dataset(elections)
+    # data_reg = regression_dataset(elections)
     data_clf = classification_dataset(elections)
 
     print()
@@ -249,9 +298,8 @@ def main() -> int:
     print("Categorical columns:", ", ".join(CATEGORICAL_FEATURES))
     print()
 
-    get_linear_regression(data_reg)
-
-    
+    pipeline = train_random_forest(data_clf)
+    save_model(pipeline)
     
     return 0
 
