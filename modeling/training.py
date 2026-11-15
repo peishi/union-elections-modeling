@@ -3,9 +3,6 @@
 
 Targets
 -------
-Regression
-    ``net_margin = votes_for_union - votes_against / <total_votes_cast>```
-
 Classification
     ``success = reason_closed == "Certific. of Representative"``
 
@@ -273,6 +270,8 @@ def train_random_forest(data_clf: pd.DataFrame) -> Pipeline:
     print(f"\nWith max_depth: {max_depth}, min_samples_leaf: {min_samples_leaf}, and n_estimators: {n}")
     print(f"ROC AUC with full training data on test dataset is {auc}")
 
+    return pipeline
+
 
 def save_model(pipeline: Pipeline) -> None:
     """"""
@@ -293,10 +292,8 @@ def main() -> int:
     # data_reg = regression_dataset(elections)
     data_clf = classification_dataset(elections)
 
-    print()
-    print("Feature columns:", ", ".join(FEATURES))
-    print("Categorical columns:", ", ".join(CATEGORICAL_FEATURES))
-    print()
+    print("\nFeature columns:", ", ".join(FEATURES))
+    print("Categorical columns:", ", ".join(CATEGORICAL_FEATURES), "\n")
 
     pipeline = train_random_forest(data_clf)
     save_model(pipeline)

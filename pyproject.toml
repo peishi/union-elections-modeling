@@ -4,8 +4,10 @@ version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
     "duckdb>=2.0.0",
+    "fastapi>=0.163.0",
     "pandas>=3.1.1",
     "scikit-learn>=1.9.1",
+    "uvicorn>=0.54.0",
 ]
 
 [dependency-groups]
