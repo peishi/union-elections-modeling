@@ -52,6 +52,35 @@ Install the environment:
 uv sync
 ```
 
+## Running just the final random forest model as a Docker container
+
+The model pipeline (DictVectorizer -> RandomForestClassifier) is pickled after `modeling/training.py` and loaded by `modeling/predict.py`
+to run "predictions" on any new data. NOTE: since the model is intended to be an explanatory model and not a predictive one,
+it includes "turnout" as a feature variable even though turnout would be known only after election. 
+
+Though one could imagine using the model to predict what the outcome probability is for different levels of turnout before an election
+to get a sense of what level might be necessary to predict an election success.
+
+For model training, you first have to ingest all of the data and transform it. See sections below for what is happening in
+each of those steps. In commands below, just listing what you should run to get to a final model deployment.
+
+```bash
+# Ingest all the data
+uv run python ingestion/ingest_nlrb_elections.py
+uv run python ingestion/ingest_union_crosswalk.py
+uv run python ingestion/ingest_union_crosswalk.py
+
+# Transform data to a single view
+uv run python transformations/build_analytical_view.py
+
+# Train the model
+uv run python modeling/training.py
+
+# Build Docker image and run it
+docker build -t nlrb_elections_model .
+docker run -it --rm -p 8080:8080 nlrb_elections_model:latest
+```
+
 ## Running the pipeline
 
 Run the steps in this order. Every ingestion script is idempotent and replaces
