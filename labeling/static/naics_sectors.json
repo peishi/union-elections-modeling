@@ -1,0 +1,106 @@
+{
+  "source": "U.S. Census Bureau, 2022 NAICS Manual — https://www.census.gov/naics/reference_files_tools/2022_NAICS_Manual.pdf",
+  "note": "Two-digit (sector) list from the 2022 NAICS. Range codes (31-33, 44-45, 48-49) are kept as-is. Example firms are well-known establishments chosen to illustrate each sector for a confirmation aid; attributions were checked against public NAICS references (e.g. trueNAICS, company filings, Census/Census-crosswalk pages). Conglomerates can span several sectors, so treat the examples as illustrative rather than exhaustive.",
+  "sectors": [
+    {
+      "code": "11",
+      "title": "Agriculture, Forestry, Fishing and Hunting",
+      "examples": ["Driscoll's", "Dole Food Company", "Chiquita Brands", "Weyerhaeuser", "Perdue Farms", "Foster Farms", "J.R. Simplot Company", "Land O'Lakes", "Ocean Spray", "Blue Diamond Growers"]
+    },
+    {
+      "code": "21",
+      "title": "Mining, Quarrying, and Oil and Gas Extraction",
+      "examples": ["ExxonMobil", "Chevron", "ConocoPhillips", "EOG Resources", "Peabody Energy", "Arch Resources", "Freeport-McMoRan", "Newmont", "Barrick Gold", "Vulcan Materials"]
+    },
+    {
+      "code": "22",
+      "title": "Utilities",
+      "examples": ["Duke Energy", "Southern Company", "NextEra Energy", "Exelon", "Dominion Energy", "American Electric Power", "Xcel Energy", "Consolidated Edison", "Pacific Gas & Electric", "National Grid"]
+    },
+    {
+      "code": "23",
+      "title": "Construction",
+      "examples": ["Bechtel", "Turner Construction", "Kiewit", "Fluor", "DPR Construction", "Whiting-Turner", "Skanska USA", "Hensel Phelps", "Gilbane Building Company", "Clark Construction"]
+    },
+    {
+      "code": "31-33",
+      "title": "Manufacturing",
+      "examples": ["General Motors", "Ford Motor Company", "Boeing", "General Electric", "3M", "Caterpillar", "Procter & Gamble", "Intel", "Johnson & Johnson", "Whirlpool"]
+    },
+    {
+      "code": "42",
+      "title": "Wholesale Trade",
+      "examples": ["McKesson", "Cardinal Health", "Sysco", "US Foods", "W.W. Grainger", "Fastenal", "Ferguson", "Genuine Parts Company", "Arrow Electronics", "Avnet"]
+    },
+    {
+      "code": "44-45",
+      "title": "Retail Trade",
+      "examples": ["Walmart", "Costco", "Target", "The Home Depot", "Lowe's", "Kroger", "Walgreens", "Best Buy", "Macy's", "Amazon"]
+    },
+    {
+      "code": "48-49",
+      "title": "Transportation and Warehousing",
+      "examples": ["UPS", "FedEx", "Union Pacific", "CSX", "Norfolk Southern", "Delta Air Lines", "American Airlines", "J.B. Hunt", "XPO", "C.H. Robinson"]
+    },
+    {
+      "code": "51",
+      "title": "Information",
+      "examples": ["Alphabet (Google)", "Meta", "Netflix", "Microsoft", "Salesforce", "Comcast", "Verizon", "AT&T", "The Walt Disney Company", "AMC Theatres"]
+    },
+    {
+      "code": "52",
+      "title": "Finance and Insurance",
+      "examples": ["JPMorgan Chase", "Bank of America", "Wells Fargo", "Goldman Sachs", "Citigroup", "American Express", "Visa", "MetLife", "State Farm", "Prudential Financial"]
+    },
+    {
+      "code": "53",
+      "title": "Real Estate and Rental and Leasing",
+      "examples": ["CBRE Group", "JLL", "Simon Property Group", "Prologis", "Anywhere Real Estate", "WeWork", "United Rentals", "U-Haul", "CoStar Group", "Zillow Group"]
+    },
+    {
+      "code": "54",
+      "title": "Professional, Scientific, and Technical Services",
+      "examples": ["Accenture", "Deloitte", "McKinsey & Company", "PwC", "EY", "KPMG", "IBM", "Booz Allen Hamilton", "AECOM", "Jacobs Solutions"]
+    },
+    {
+      "code": "55",
+      "title": "Management of Companies and Enterprises",
+      "examples": ["Berkshire Hathaway", "Koch Industries", "Loews Corporation", "Icahn Enterprises", "Steel Partners Holdings", "Roper Technologies", "Danaher", "Alleghany Corporation"]
+    },
+    {
+      "code": "56",
+      "title": "Administrative and Support and Waste Management and Remediation Services",
+      "examples": ["Waste Management", "Republic Services", "Cintas", "Robert Half", "ManpowerGroup", "ADP", "Rollins", "Sodexo", "Aramark", "ABM Industries"]
+    },
+    {
+      "code": "61",
+      "title": "Educational Services",
+      "examples": ["University of Phoenix", "Kaplan", "Pearson", "Grand Canyon Education", "Strategic Education (Strayer University)", "Laureate Education", "Chegg", "Coursera", "2U", "New York University"]
+    },
+    {
+      "code": "62",
+      "title": "Health Care and Social Assistance",
+      "examples": ["HCA Healthcare", "UnitedHealth Group", "CVS Health", "Elevance Health", "Mayo Clinic", "Cleveland Clinic", "Kaiser Permanente", "Tenet Healthcare", "Community Health Systems", "Universal Health Services"]
+    },
+    {
+      "code": "71",
+      "title": "Arts, Entertainment, and Recreation",
+      "examples": ["Six Flags", "Cedar Fair", "SeaWorld", "Live Nation Entertainment", "Madison Square Garden", "Planet Fitness", "Topgolf", "Bowlero", "Life Time Fitness"]
+    },
+    {
+      "code": "72",
+      "title": "Accommodation and Food Services",
+      "examples": ["McDonald's", "Starbucks", "Marriott International", "Hilton", "Yum! Brands", "Darden Restaurants", "Chipotle", "Hyatt Hotels", "Restaurant Brands International", "MGM Resorts International"]
+    },
+    {
+      "code": "81",
+      "title": "Other Services (except Public Administration)",
+      "examples": ["Goodwill Industries", "YMCA", "The Salvation Army", "United Way", "Great Clips", "ServiceMaster", "Jiffy Lube", "Meineke", "Regis Corporation", "AAA"]
+    },
+    {
+      "code": "92",
+      "title": "Public Administration",
+      "examples": ["U.S. Postal Service", "U.S. Department of Defense", "NASA", "City of New York", "Los Angeles County", "Federal Bureau of Investigation", "U.S. Department of Veterans Affairs", "State of California", "City of Chicago", "New York City Police Department"]
+    }
+  ]
+}

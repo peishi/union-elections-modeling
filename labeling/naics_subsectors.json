@@ -1,0 +1,121 @@
+{
+  "source": "U.S. Census Bureau, 2022 NAICS Manual — https://www.census.gov/naics/reference_files_tools/2022_NAICS_Manual.pdf",
+  "note": "2022 NAICS three-digit subsectors (96). `sector` is the parent two-digit sector; range sectors (31-33, 44-45, 48-49) are kept as-is.",
+  "subsectors": [
+    {"code": "111", "title": "Crop Production", "sector": "11"},
+    {"code": "112", "title": "Animal Production and Aquaculture", "sector": "11"},
+    {"code": "113", "title": "Forestry and Logging", "sector": "11"},
+    {"code": "114", "title": "Fishing, Hunting and Trapping", "sector": "11"},
+    {"code": "115", "title": "Support Activities for Agriculture and Forestry", "sector": "11"},
+
+    {"code": "211", "title": "Oil and Gas Extraction", "sector": "21"},
+    {"code": "212", "title": "Mining and Quarrying (except Oil and Gas)", "sector": "21"},
+    {"code": "213", "title": "Support Activities for Mining", "sector": "21"},
+
+    {"code": "221", "title": "Utilities", "sector": "22"},
+
+    {"code": "236", "title": "Construction of Buildings", "sector": "23"},
+    {"code": "237", "title": "Heavy and Civil Engineering Construction", "sector": "23"},
+    {"code": "238", "title": "Specialty Trade Contractors", "sector": "23"},
+
+    {"code": "311", "title": "Food Manufacturing", "sector": "31-33"},
+    {"code": "312", "title": "Beverage and Tobacco Product Manufacturing", "sector": "31-33"},
+    {"code": "313", "title": "Textile Mills", "sector": "31-33"},
+    {"code": "314", "title": "Textile Product Mills", "sector": "31-33"},
+    {"code": "315", "title": "Apparel Manufacturing", "sector": "31-33"},
+    {"code": "316", "title": "Leather and Allied Product Manufacturing", "sector": "31-33"},
+    {"code": "321", "title": "Wood Product Manufacturing", "sector": "31-33"},
+    {"code": "322", "title": "Paper Manufacturing", "sector": "31-33"},
+    {"code": "323", "title": "Printing and Related Support Activities", "sector": "31-33"},
+    {"code": "324", "title": "Petroleum and Coal Products Manufacturing", "sector": "31-33"},
+    {"code": "325", "title": "Chemical Manufacturing", "sector": "31-33"},
+    {"code": "326", "title": "Plastics and Rubber Products Manufacturing", "sector": "31-33"},
+    {"code": "327", "title": "Nonmetallic Mineral Product Manufacturing", "sector": "31-33"},
+    {"code": "331", "title": "Primary Metal Manufacturing", "sector": "31-33"},
+    {"code": "332", "title": "Fabricated Metal Product Manufacturing", "sector": "31-33"},
+    {"code": "333", "title": "Machinery Manufacturing", "sector": "31-33"},
+    {"code": "334", "title": "Computer and Electronic Product Manufacturing", "sector": "31-33"},
+    {"code": "335", "title": "Electrical Equipment, Appliance, and Component Manufacturing", "sector": "31-33"},
+    {"code": "336", "title": "Transportation Equipment Manufacturing", "sector": "31-33"},
+    {"code": "337", "title": "Furniture and Related Product Manufacturing", "sector": "31-33"},
+    {"code": "339", "title": "Miscellaneous Manufacturing", "sector": "31-33"},
+
+    {"code": "423", "title": "Merchant Wholesalers, Durable Goods", "sector": "42"},
+    {"code": "424", "title": "Merchant Wholesalers, Nondurable Goods", "sector": "42"},
+    {"code": "425", "title": "Wholesale Trade Agents and Brokers", "sector": "42"},
+
+    {"code": "441", "title": "Motor Vehicle and Parts Dealers", "sector": "44-45"},
+    {"code": "444", "title": "Building Material and Garden Equipment and Supplies Dealers", "sector": "44-45"},
+    {"code": "445", "title": "Food and Beverage Retailers", "sector": "44-45"},
+    {"code": "449", "title": "Furniture, Home Furnishings, Electronics, and Appliance Retailers", "sector": "44-45"},
+    {"code": "455", "title": "General Merchandise Retailers", "sector": "44-45"},
+    {"code": "456", "title": "Health and Personal Care Retailers", "sector": "44-45"},
+    {"code": "457", "title": "Gasoline Stations and Fuel Dealers", "sector": "44-45"},
+    {"code": "458", "title": "Clothing, Clothing Accessories, Shoe, and Jewelry Retailers", "sector": "44-45"},
+    {"code": "459", "title": "Sporting Goods, Hobby, Musical Instrument, Book, and Miscellaneous Retailers", "sector": "44-45"},
+
+    {"code": "481", "title": "Air Transportation", "sector": "48-49"},
+    {"code": "482", "title": "Rail Transportation", "sector": "48-49"},
+    {"code": "483", "title": "Water Transportation", "sector": "48-49"},
+    {"code": "484", "title": "Truck Transportation", "sector": "48-49"},
+    {"code": "485", "title": "Transit and Ground Passenger Transportation", "sector": "48-49"},
+    {"code": "486", "title": "Pipeline Transportation", "sector": "48-49"},
+    {"code": "487", "title": "Scenic and Sightseeing Transportation", "sector": "48-49"},
+    {"code": "488", "title": "Support Activities for Transportation", "sector": "48-49"},
+    {"code": "491", "title": "Postal Service", "sector": "48-49"},
+    {"code": "492", "title": "Couriers and Messengers", "sector": "48-49"},
+    {"code": "493", "title": "Warehousing and Storage", "sector": "48-49"},
+
+    {"code": "512", "title": "Motion Picture and Sound Recording Industries", "sector": "51"},
+    {"code": "513", "title": "Publishing Industries", "sector": "51"},
+    {"code": "516", "title": "Broadcasting and Content Providers", "sector": "51"},
+    {"code": "517", "title": "Telecommunications", "sector": "51"},
+    {"code": "518", "title": "Computing Infrastructure Providers, Data Processing, Web Hosting, and Related Services", "sector": "51"},
+    {"code": "519", "title": "Web Search Portals, Libraries, Archives, and Other Information Services", "sector": "51"},
+
+    {"code": "521", "title": "Monetary Authorities-Central Bank", "sector": "52"},
+    {"code": "522", "title": "Credit Intermediation and Related Activities", "sector": "52"},
+    {"code": "523", "title": "Securities, Commodity Contracts, and Other Financial Investments and Related Activities", "sector": "52"},
+    {"code": "524", "title": "Insurance Carriers and Related Activities", "sector": "52"},
+    {"code": "525", "title": "Funds, Trusts, and Other Financial Vehicles", "sector": "52"},
+
+    {"code": "531", "title": "Real Estate", "sector": "53"},
+    {"code": "532", "title": "Rental and Leasing Services", "sector": "53"},
+    {"code": "533", "title": "Lessors of Nonfinancial Intangible Assets (except Copyrighted Works)", "sector": "53"},
+
+    {"code": "541", "title": "Professional, Scientific, and Technical Services", "sector": "54"},
+
+    {"code": "551", "title": "Management of Companies and Enterprises", "sector": "55"},
+
+    {"code": "561", "title": "Administrative and Support Services", "sector": "56"},
+    {"code": "562", "title": "Waste Management and Remediation Services", "sector": "56"},
+
+    {"code": "611", "title": "Educational Services", "sector": "61"},
+
+    {"code": "621", "title": "Ambulatory Health Care Services", "sector": "62"},
+    {"code": "622", "title": "Hospitals", "sector": "62"},
+    {"code": "623", "title": "Nursing and Residential Care Facilities", "sector": "62"},
+    {"code": "624", "title": "Social Assistance", "sector": "62"},
+
+    {"code": "711", "title": "Performing Arts, Spectator Sports, and Related Industries", "sector": "71"},
+    {"code": "712", "title": "Museums, Historical Sites, and Similar Institutions", "sector": "71"},
+    {"code": "713", "title": "Amusement, Gambling, and Recreation Industries", "sector": "71"},
+
+    {"code": "721", "title": "Accommodation", "sector": "72"},
+    {"code": "722", "title": "Food Services and Drinking Places", "sector": "72"},
+
+    {"code": "811", "title": "Repair and Maintenance", "sector": "81"},
+    {"code": "812", "title": "Personal and Laundry Services", "sector": "81"},
+    {"code": "813", "title": "Religious, Grantmaking, Civic, Professional, and Similar Organizations", "sector": "81"},
+    {"code": "814", "title": "Private Households", "sector": "81"},
+
+    {"code": "921", "title": "Executive, Legislative, and Other General Government Support", "sector": "92"},
+    {"code": "922", "title": "Justice, Public Order, and Safety Activities", "sector": "92"},
+    {"code": "923", "title": "Administration of Human Resource Programs", "sector": "92"},
+    {"code": "924", "title": "Administration of Environmental Quality Programs", "sector": "92"},
+    {"code": "925", "title": "Administration of Housing Programs, Urban Planning, and Community Development", "sector": "92"},
+    {"code": "926", "title": "Administration of Economic Programs", "sector": "92"},
+    {"code": "927", "title": "Space Research and Technology", "sector": "92"},
+    {"code": "928", "title": "National Security and International Affairs", "sector": "92"}
+  ]
+}

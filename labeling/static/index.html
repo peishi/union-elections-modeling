@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NAICS Sector Labeling</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --card: #ffffff;
+      --ink: #1f2933;
+      --muted: #667085;
+      --line: #e4e7ec;
+      --accent: #2563eb;
+      --accent-soft: #e0e9ff;
+      --ok: #16a34a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: var(--card);
+      border-bottom: 1px solid var(--line);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+    header h1 { font-size: 17px; margin: 0; }
+    #progress-wrap { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 260px; }
+    #progress-bar {
+      flex: 1;
+      height: 10px;
+      background: var(--line);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    #progress-fill {
+      display: block;
+      height: 100%;
+      width: 0;
+      background: var(--ok);
+      transition: width .25s ease;
+    }
+    #progress-text { font-size: 13px; color: var(--muted); white-space: nowrap; }
+    main { max-width: 980px; margin: 0 auto; padding: 20px 24px 80px; }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+    .toolbar.bottom { margin-top: 20px; }
+    .toolbar input[type="number"] { width: 64px; padding: 4px 6px; }
+    button {
+      font: inherit;
+      font-size: 14px;
+      padding: 7px 14px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    button:hover { border-color: #c3c8d0; }
+    button:disabled { opacity: .55; cursor: default; }
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+      font-weight: 600;
+    }
+    button.primary:hover { background: #1d4ed8; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px 18px;
+      margin-bottom: 14px;
+    }
+    .card.skipped { opacity: .5; }
+    .card h2 { font-size: 16px; margin: 0 0 4px; }
+    .meta { font-size: 13px; color: var(--muted); margin-bottom: 2px; }
+    .nlrb-link {
+      display: inline-block;
+      font-size: 12.5px;
+      color: var(--accent);
+      text-decoration: none;
+      margin: 2px 0 6px;
+    }
+    .nlrb-link:hover { text-decoration: underline; }
+    .union { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+    details { margin: 6px 0 10px; }
+    summary {
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--accent);
+      user-select: none;
+    }
+    details pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 12.5px;
+      line-height: 1.45;
+      background: #fafbfc;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      max-height: 220px;
+      overflow: auto;
+      margin: 8px 0 0;
+    }
+    .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .controls select { flex: 1 1 340px; padding: 7px 8px; font: inherit; font-size: 14px; border-radius: 8px; border: 1px solid var(--line); }
+    .controls input[type="text"] { padding: 7px 8px; font: inherit; font-size: 14px; border-radius: 8px; border: 1px solid var(--line); }
+    .examples {
+      display: none;
+      font-size: 12.5px;
+      color: var(--muted);
+      margin-top: 8px;
+      line-height: 1.5;
+    }
+    .examples.show { display: block; }
+    .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; font-size: 13px; color: var(--muted); }
+    .chip {
+      background: var(--accent-soft);
+      border: 1px solid #c7d7fe;
+      color: #1e40af;
+      border-radius: 999px;
+      padding: 4px 12px;
+      font-size: 13px;
+    }
+    .raw { margin-top: 6px; }
+    .raw summary {
+      font-size: 12.5px;
+      color: var(--muted);
+      cursor: pointer;
+      user-select: none;
+    }
+    .raw pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 12px;
+      line-height: 1.45;
+      background: #fafbfc;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 10px;
+      max-height: 240px;
+      overflow: auto;
+      margin: 6px 0 0;
+    }
+    .raw-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+    .done { text-align: center; color: var(--muted); padding: 40px 0; font-size: 15px; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>NAICS Sector Labeling</h1>
+  <div id="progress-wrap">
+    <div id="progress-bar"><span id="progress-fill"></span></div>
+    <span id="progress-text"></span>
+  </div>
+</header>
+
+<main>
+  <div class="toolbar">
+    <label>Batch size <input id="batch" type="number" value="10" min="1" max="50"></label>
+    <button id="reload">Reload sample</button>
+    <span id="status"></span>
+  </div>
+
+  <div id="cards"></div>
+
+  <div class="toolbar bottom">
+    <button id="save" class="primary">Save &amp; next</button>
+  </div>
+</main>
+
+<script>
+  let SECTORS = [];
+  let cards = [];
+
+  const $ = (id) => document.getElementById(id);
+  const setStatus = (msg) => { $('status').textContent = msg; };
+
+  async function init() {
+    try {
+      const res = await fetch('/api/sectors');
+      const data = await res.json();
+      SECTORS = data.sectors || [];
+    } catch (e) {
+      setStatus('Could not load the NAICS sector list.');
+    }
+    $('reload').addEventListener('click', loadSample);
+    $('save').addEventListener('click', saveAndNext);
+    await loadSample();
+    await refreshProgress();
+  }
+
+  async function loadSample() {
+    setStatus('Loading…');
+    const n = Math.max(1, Math.min(50, parseInt($('batch').value || '10', 10)));
+    try {
+      const res = await fetch('/api/sample?n=' + n);
+      const data = await res.json();
+      render(data.cases || []);
+      setStatus('');
+    } catch (e) {
+      setStatus('Failed to load a sample.');
+    }
+  }
+
+  function render(cases) {
+    const container = $('cards');
+    container.innerHTML = '';
+    cards = cases.map((c) => renderCard(container, c));
+    if (!cases.length) {
+      const p = document.createElement('p');
+      p.className = 'done';
+      p.textContent = 'No unlabeled employers left.';
+      container.appendChild(p);
+    }
+  }
+
+  function sectorFor(code) {
+    if (!code) return null;
+    let sector = SECTORS.find((s) => s.code === code);
+    if (sector) return sector;
+    // Map a finer code (e.g. "622") to its sector by first digits.
+    return SECTORS.find((s) => code.startsWith(s.code.split('-')[0])) || null;
+  }
+
+  function renderCard(container, c) {
+    const card = document.createElement('div');
+    card.className = 'card';
+
+    const h = document.createElement('h2');
+    h.textContent = c.employer_name || '(unknown employer)';
+    card.appendChild(h);
+
+    const metaParts = [];
+    if (c.case_number) metaParts.push('Case ' + c.case_number);
+    if (c.filing_year) metaParts.push('Filed ' + c.filing_year);
+    const location = [c.city, c.state].filter(Boolean).join(', ');
+    if (location) metaParts.push(location);
+    if (metaParts.length) {
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.textContent = metaParts.join(' · ');
+      card.appendChild(meta);
+    }
+
+    if (c.nlrb_url) {
+      const link = document.createElement('a');
+      link.className = 'nlrb-link';
+      link.href = c.nlrb_url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = 'View NLRB case ↗';
+      card.appendChild(link);
+    }
+
+    if (c.election_union_name) {
+      const u = document.createElement('div');
+      u.className = 'union';
+      u.textContent = 'Union: ' + c.election_union_name;
+      card.appendChild(u);
+    }
+
+    if (c.voting_unit_description) {
+      const details = document.createElement('details');
+      const summary = document.createElement('summary');
+      summary.textContent = 'Bargaining unit description';
+      details.appendChild(summary);
+      const pre = document.createElement('pre');
+      pre.textContent = c.voting_unit_description;
+      details.appendChild(pre);
+      card.appendChild(details);
+    }
+
+    const controls = document.createElement('div');
+    controls.className = 'controls';
+
+    const select = document.createElement('select');
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = '— select a sector —';
+    select.appendChild(placeholder);
+    for (const s of SECTORS) {
+      const opt = document.createElement('option');
+      opt.value = s.code;
+      opt.textContent = s.code + ' — ' + s.title;
+      select.appendChild(opt);
+    }
+    controls.appendChild(select);
+
+    const free = document.createElement('input');
+    free.type = 'text';
+    free.size = 20;
+    free.placeholder = 'optional finer code (e.g. 622)';
+    controls.appendChild(free);
+
+    const suggest = document.createElement('button');
+    suggest.textContent = 'Suggest';
+    controls.appendChild(suggest);
+
+    const skip = document.createElement('button');
+    skip.textContent = 'Skip';
+    controls.appendChild(skip);
+
+    card.appendChild(controls);
+
+    const examples = document.createElement('div');
+    examples.className = 'examples';
+    card.appendChild(examples);
+
+    const chips = document.createElement('div');
+    chips.className = 'chips';
+    card.appendChild(chips);
+
+    const suggestRaw = document.createElement('div');
+    suggestRaw.className = 'raw';
+    card.appendChild(suggestRaw);
+
+    const cardObj = { data: c, el: card, select, free, skipped: false };
+
+    function updateExamples() {
+      const sector = sectorFor(select.value);
+      if (sector && sector.examples && sector.examples.length) {
+        examples.textContent = 'Example firms: ' + sector.examples.join(', ');
+        examples.classList.add('show');
+      } else {
+        examples.textContent = '';
+        examples.classList.remove('show');
+      }
+    }
+    select.addEventListener('change', updateExamples);
+    updateExamples();
+
+    suggest.addEventListener('click', async () => {
+      chips.innerHTML = '';
+      suggestRaw.innerHTML = '';
+      suggest.disabled = true;
+      suggest.textContent = 'Thinking…';
+      try {
+        const res = await fetch('/api/suggest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            employer_name: c.employer_name,
+            city: c.city,
+            state: c.state,
+            election_union_name: c.election_union_name,
+            voting_unit_description: c.voting_unit_description,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || 'HTTP ' + res.status);
+        }
+        const data = await res.json();
+        const suggestions = data.suggestions || [];
+        if (!suggestions.length) {
+          chips.textContent = 'No suggestions returned.';
+        }
+        suggestions.forEach((s) => {
+          const chip = document.createElement('button');
+          chip.className = 'chip';
+          let label = s.code + ' — ' + s.title;
+          if (typeof s.probability === 'number') {
+            label += ' · ' + Math.round(s.probability * 100) + '%';
+          }
+          chip.textContent = label;
+          if (s.rationale) chip.title = s.rationale;
+          chip.addEventListener('click', () => {
+            select.value = s.code;
+            updateExamples();
+          });
+          chips.appendChild(chip);
+        });
+
+        const rawText = data.raw || '';
+        const reasoning = data.reasoning || '';
+        if (rawText || reasoning) {
+          const details = document.createElement('details');
+          const summary = document.createElement('summary');
+          summary.textContent = 'Show raw model response';
+          details.appendChild(summary);
+          if (reasoning) {
+            const label = document.createElement('div');
+            label.className = 'raw-label';
+            label.textContent = 'Reasoning';
+            details.appendChild(label);
+            const pre = document.createElement('pre');
+            pre.textContent = reasoning;
+            details.appendChild(pre);
+          }
+          if (rawText) {
+            if (reasoning) {
+              const label = document.createElement('div');
+              label.className = 'raw-label';
+              label.textContent = 'Content';
+              details.appendChild(label);
+            }
+            const pre = document.createElement('pre');
+            pre.textContent = rawText;
+            details.appendChild(pre);
+          }
+          suggestRaw.appendChild(details);
+        }
+      } catch (e) {
+        chips.textContent = 'Suggestion failed: ' + e.message;
+      } finally {
+        suggest.disabled = false;
+        suggest.textContent = 'Suggest';
+      }
+    });
+
+    skip.addEventListener('click', () => {
+      cardObj.skipped = true;
+      card.classList.add('skipped');
+      skip.textContent = 'Skipped';
+      skip.disabled = true;
+    });
+
+    container.appendChild(card);
+    return cardObj;
+  }
+
+  async function saveAndNext() {
+    const labels = [];
+    for (const card of cards) {
+      if (card.skipped) continue;
+      const code = (card.free.value.trim() || card.select.value || '').trim();
+      if (!code) continue;
+      const sector = sectorFor(code);
+      labels.push({
+        employer_name: card.data.employer_name,
+        naics: code,
+        naics_title: sector ? sector.title : null,
+      });
+    }
+    if (!labels.length) {
+      setStatus('Select a sector for at least one card.');
+      return;
+    }
+    setStatus('Saving…');
+    try {
+      const res = await fetch('/api/label', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ labels }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'HTTP ' + res.status);
+      }
+      await refreshProgress();
+      await loadSample();
+    } catch (e) {
+      setStatus('Save failed: ' + e.message);
+    }
+  }
+
+  async function refreshProgress() {
+    try {
+      const res = await fetch('/api/progress');
+      const p = await res.json();
+      const pct = p.total ? Math.round((100 * p.labeled) / p.total) : 0;
+      $('progress-fill').style.width = pct + '%';
+      $('progress-text').textContent =
+        p.labeled.toLocaleString() + ' / ' + p.total.toLocaleString() +
+        ' employers (' + pct + '%)';
+    } catch (e) {
+      /* progress is best-effort */
+    }
+  }
+
+  init();
+</script>
+</body>
+</html>
