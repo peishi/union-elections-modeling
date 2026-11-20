@@ -6,6 +6,7 @@ The view combines:
 * ``filing``            one row per NLRB case (completed cases only)
 * ``election``          the most recent election for each case
 * ``tally``             per-option vote counts (union vs "No union")
+* ``voting_unit``       bargaining-unit descriptions for the case
 * ``participant``       the primary union participant for the case
 * ``union_names_crosswalk``
                         election union name -> canonical parent + OLMS f_num
@@ -21,7 +22,16 @@ are included, and only the most recent election per case is kept.
 
 Vote totals come from ``tally`` (``votes_for_union`` / ``votes_against``).
 Elections whose tally has more than two options (a contested multi-union
-ballot) or only a "No union" option are excluded, along with their filings.
+ballot), only a "No union" option, or an impossible tally (the sum of the
+option votes exceeds the election's ``unit_size``) are excluded, along with
+their filings.  The ``unit_size`` check drops cases where separate unit
+results appear to have been counted together / duplicated in the source.
+
+``voting_unit_description`` concatenates the distinct, non-empty
+``voting_unit.description`` values for the case (ordered by ``unit_id``).  A
+filing usually has a single unit; multi-unit cases (multiple locations or
+crafts of one employer) contribute every unit's description.
+
 The union name used for finance matching comes from the primary union
 ``participant``; ``election_mode`` is not used by this view.
 
@@ -54,6 +64,7 @@ REQUIRED_TABLES = {
     "filing": "ingestion/ingest_nlrb_elections.py",
     "election": "ingestion/ingest_nlrb_elections.py",
     "tally": "ingestion/ingest_nlrb_elections.py",
+    "voting_unit": "ingestion/ingest_nlrb_elections.py",
     "participant": "ingestion/ingest_nlrb_elections.py",
     "lm_data": "ingestion/ingest_union_finances.py",
     "ar_disbursements_total": "ingestion/ingest_union_finances.py",
@@ -135,6 +146,29 @@ tally_votes AS (
     FROM "tally"
     GROUP BY "election_id"
 ),
+voting_unit_desc AS (
+    SELECT
+        "case_number",
+        string_agg(
+            "description", ' || ' ORDER BY "unit_id", "voting_unit_id"
+        ) AS voting_unit_description
+    FROM (
+        SELECT
+            "case_number",
+            "unit_id",
+            "voting_unit_id",
+            "description",
+            row_number() OVER (
+                PARTITION BY "case_number", "description"
+                ORDER BY "unit_id", "voting_unit_id"
+            ) AS rn
+        FROM "voting_unit"
+        WHERE "description" IS NOT NULL
+          AND trim("description") <> ''
+    ) dedup
+    WHERE rn = 1
+    GROUP BY "case_number"
+),
 base AS (
     SELECT
         f."case_number",
@@ -160,6 +194,7 @@ base AS (
         f."certified_representative",
         e."ballot_type",
         e."voting_unit_id",
+        vud."voting_unit_description",
 
         -- Case-level flags.
         COALESCE(e."n_elections", 0) > 1 AS more_than_one_election,
@@ -174,15 +209,23 @@ base AS (
        AND e."election_rank" = 1
     LEFT JOIN tally_votes tv
         ON tv."election_id" = e."election_id"
+    LEFT JOIN "voting_unit_desc" vud
+        ON vud."case_number" = f."case_number"
     LEFT JOIN "primary_union" pu
         ON pu."case_number" = f."case_number"
     WHERE f."case_type" IN ('RM', 'RC')
       AND f."date_closed" IS NOT NULL
       AND e."election_id" NOT IN (
-          SELECT "election_id" FROM "tally"
-          GROUP BY "election_id"
+          SELECT t."election_id"
+          FROM "tally" t
+          JOIN "election" el ON el."election_id" = t."election_id"
+          GROUP BY t."election_id", el."unit_size"
           HAVING count(*) > 2
-              OR (count(*) = 1 AND max("option") = 'No union')
+              OR (count(*) = 1 AND max(t."option") = 'No union')
+              OR (
+                  el."unit_size" IS NOT NULL
+                  AND sum(t."votes") > el."unit_size"
+              )
       )
 )
 SELECT
@@ -223,6 +266,7 @@ SELECT
     b."certified_representative",
     b."ballot_type",
     b."voting_unit_id",
+    b."voting_unit_description",
     lm."union_name" AS finance_union_name,
     lm."aff_abbr" AS finance_aff_abbr,
     lm."members",
@@ -286,7 +330,10 @@ def report(
             count(*) FILTER (WHERE "rpt_id" IS NOT NULL) AS finance_rows,
             count(DISTINCT "case_number") FILTER (
                 WHERE "rpt_id" IS NOT NULL
-            ) AS filings_with_finance
+            ) AS filings_with_finance,
+            count(*) FILTER (
+                WHERE "voting_unit_description" IS NOT NULL
+            ) AS voting_unit_rows
         FROM "{view_name}"
         """
     ).fetchone()
@@ -300,6 +347,7 @@ def report(
         print(f"Rows with tally vote data: {row[3]:,}")
         print(f"Rows with finance match: {row[4]:,}")
         print(f"Filings with at least one finance match: {row[5]:,}")
+        print(f"Rows with voting unit description: {row[6]:,}")
 
     fanout = connection.execute(
         f"""

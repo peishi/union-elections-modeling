@@ -14,6 +14,7 @@ Tables written (all in the target DuckDB file):
     election_result  one row per election result
     election_mode    election-mode / tally details (may be multiple per case)
     tally            per-option vote counts, keyed by election_id
+    voting_unit      one row per bargaining unit, keyed by case_number (-> filing)
     filing           one row per NLRB case referenced by the ingested elections
 
 By default the cutoff is the *election date* (2010-01-01), not the filing
@@ -126,6 +127,18 @@ TABLE_SPECS: tuple[TableSpec, ...] = (
         order_by='"election_id", "option"',
     ),
     TableSpec(
+        name="voting_unit",
+        columns=(
+            Column("voting_unit_id", "BIGINT"),
+            Column("case_number", "VARCHAR"),
+            Column("unit_id", "VARCHAR"),
+            Column("description", "VARCHAR"),
+            Column("created_at", "TIMESTAMP"),
+        ),
+        order_by='"voting_unit_id"',
+        primary_key="voting_unit_id",
+    ),
+    TableSpec(
         name="election_mode",
         columns=(
             Column("election_id", "BIGINT"),
@@ -211,6 +224,68 @@ TABLE_SPECS: tuple[TableSpec, ...] = (
 )
 
 
+def check_voting_units(connection: duckdb.DuckDBPyConnection) -> None:
+    """Report how voting units map to union-election filings, and flag bad tallies."""
+    distribution = connection.execute(
+        """
+        SELECT n_units, count(*) AS n_filings
+        FROM (
+            SELECT f."case_number", count(vu."voting_unit_id") AS n_units
+            FROM "filing" f
+            LEFT JOIN "voting_unit" vu ON vu."case_number" = f."case_number"
+            WHERE f."case_number" IN (
+                SELECT DISTINCT "case_number" FROM "election"
+            )
+            GROUP BY f."case_number"
+        )
+        GROUP BY n_units
+        ORDER BY n_units
+        """
+    ).fetchall()
+    if distribution:
+        print("Voting units per union-election filing:")
+        for n_units, n_filings in distribution:
+            label = "unit" if n_units == 1 else "units"
+            print(f"  {n_units:>2} {label:<5}: {n_filings:,} filings")
+
+    multi = connection.execute(
+        """
+        SELECT count(*)
+        FROM (
+            SELECT f."case_number"
+            FROM "filing" f
+            LEFT JOIN "voting_unit" vu ON vu."case_number" = f."case_number"
+            WHERE f."case_number" IN (
+                SELECT DISTINCT "case_number" FROM "election"
+            )
+            GROUP BY f."case_number"
+            HAVING count(vu."voting_unit_id") > 1
+        )
+        """
+    ).fetchone()
+    if multi:
+        print(f"Filings with more than one voting unit: {multi[0]:,}")
+
+    impossible = connection.execute(
+        """
+        SELECT count(*)
+        FROM (
+            SELECT t."election_id"
+            FROM "tally" t
+            JOIN "election" e ON e."election_id" = t."election_id"
+            GROUP BY t."election_id", e."unit_size"
+            HAVING e."unit_size" IS NOT NULL
+               AND sum(t."votes") > e."unit_size"
+        )
+        """
+    ).fetchone()
+    if impossible:
+        print(
+            "Elections with impossible tallies (votes > unit size): "
+            f"{impossible[0]:,}"
+        )
+
+
 def report(
     connection: duckdb.DuckDBPyConnection, db_path: Path
 ) -> None:  # pragma: no cover - presentation only
@@ -232,6 +307,8 @@ def report(
         )
     if orphans:
         print(f"Elections with no filing row: {orphans[0]:,}")
+
+    check_voting_units(connection)
 
 
 # ---------------------------------------------------------------------------

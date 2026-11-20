@@ -32,6 +32,16 @@ union-elections-modeling/
 |    └── ingest_union_finances.py
 ├── transformations/
 |    └── build_analytical_view.py
+├── labeling/
+|    ├── app.py
+|    ├── llm.py
+|    ├── llm_pipeline.py
+|    ├── sampler.py
+|    ├── store.py
+|    ├── naics_subsectors.json
+|    └── static/
+|         ├── index.html
+|         └── naics_sectors.json
 └── modeling/
      ├── __init__.py
      ├── eda.ipynb
@@ -40,6 +50,30 @@ union-elections-modeling/
 ```
 
 The `training.py` file contains the feature engineering pipelines 
+
+## Industry labeling
+
+The `labeling/` folder assigns 2022 NAICS codes to employers in
+`analytical_elections` for training an industry classifier. Labels are stored
+in `llm_naics_labels`, with each employer's top-2 two-digit sectors and top-2
+three-digit subsectors (plus probabilities, the query text, and token usage).
+
+- `labeling/llm_pipeline.py` batch-classifies every unique employer with an LLM
+  and writes incrementally (resumable, token totals printed at the end):
+
+```bash
+uv run python labeling/llm_pipeline.py --limit 20   # test run
+uv run python labeling/llm_pipeline.py              # all employers
+```
+
+- `labeling/app.py` is a local web UI for reviewing/correcting labels:
+
+```bash
+uv run python labeling/app.py
+# open http://127.0.0.1:8000/
+```
+
+See `labeling/README.md` for details.
 
 ## Requirements
 
@@ -110,6 +144,7 @@ All output goes to `data/union_elections.duckdb`.
 | `election_result` | `ingest_nlrb_elections.py` | one row per election result |
 | `election_mode` | `ingest_nlrb_elections.py` | additional detail on elections from FOIA |
 | `tally` | `ingest_nlrb_elections.py` | per-option vote counts, keyed by `election_id` |
+| `voting_unit` | `ingest_nlrb_elections.py` | bargaining-unit descriptions, keyed by `case_number` (→ `filing`) |
 | `filing` | `ingest_nlrb_elections.py` | NLRB cases linked to the ingested elections |
 | `participant` | `ingest_nlrb_elections.py` | participants for those cases |
 | `lm_data` | `ingest_union_finances.py` | one row per OLMS annual report |
@@ -165,7 +200,16 @@ It includes:
 - **Vote totals from `tally`:** `votes_for_union` (the union option) and
   `votes_against` (the `'No union'` option). Elections whose tally has more
   than two options (contested multi-union ballots) or only a `'No union'`
-  option are excluded, along with their filings.
+  option are excluded, along with their filings. Elections whose tally total
+  exceeds the election's `unit_size` (more votes than eligible voters) are
+  also excluded — this is the rule that flagged the multi-unit cases where
+  separate unit results appear to have been counted together or duplicated in
+  the source. In the current 2010+ snapshot it removes 112 filings.
+- **`voting_unit_description`:** the bargaining-unit description text for the
+  case, taken from `voting_unit`. A filing usually has a single unit; for the
+  ~1% of filings with several units (multiple locations or crafts of one
+  employer) the distinct descriptions are concatenated, ordered by `unit_id`.
+  This is intended as text input for industry classification.
 - `lm_data` and `ar_disbursements_total` finance fields. The disbursement
   measure is `lm_data.ttl_disbursements`, the total reported on the filing.
   The itemized `ar_disbursements_total` categories are partial and reconcile
@@ -222,6 +266,10 @@ uv run --with jupyter jupyter lab modeling/eda.ipynb
 ## Notes and caveats
 
 - `election_mode` is still ingested but is not used by `analytical_elections`.
+- `voting_unit` is not 1:1 with `filing`: a filing can have several bargaining
+  units (multiple locations or crafts). `analytical_elections` keeps one row
+  per filing, concatenates the units' descriptions, and excludes elections
+  whose tally is impossible (votes > `unit_size`).
 - `ar_disbursements_total` is effectively LM-2-only. For LM-3/LM-4 unions, use
   `lm_data.ttl_disbursements`.
 - The `filing` and `participant` tables are limited to cases linked to the
