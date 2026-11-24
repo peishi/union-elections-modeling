@@ -72,7 +72,24 @@ REQUIRED_TABLES = {
 }
 
 
-def view_sql(view_name: str) -> str:
+def view_sql(view_name: str, has_labels: bool = False) -> str:
+    if has_labels:
+        label_columns = (
+            '    lab."naics_2" AS naics_2,\n'
+            '    lab."naics_3" AS naics_3,\n'
+            '    lab."model" AS llm_to_naics\n'
+        )
+        label_join = (
+            'LEFT JOIN "llm_naics_labels" lab\n'
+            '    ON lab."employer_name" = b."employer_name"\n'
+        )
+    else:
+        label_columns = (
+            '    CAST(NULL AS VARCHAR) AS naics_2,\n'
+            '    CAST(NULL AS VARCHAR) AS naics_3,\n'
+            '    CAST(NULL AS VARCHAR) AS llm_to_naics\n'
+        )
+        label_join = ""
     return f"""
 CREATE OR REPLACE VIEW "{view_name}" AS
 WITH crosswalk AS (
@@ -283,10 +300,14 @@ SELECT
     cw."pred_f_num_score",
     cw."pred_is_union",
     cw."pred_union_name_score",
-    cw."pred_is_union_score"
-FROM base b
+    cw."pred_is_union_score",
+
+    -- Industry labels (NULL until the employer has been labeled).
+    {label_columns}FROM base b
+
 LEFT JOIN crosswalk cw
     ON cw.name_key = upper(trim(b."election_union_name"))
+{label_join}
 LEFT JOIN "lm_data" lm
     ON lm."f_num" = cw."pred_f_num"
    AND b."election_date" IS NOT NULL
@@ -295,6 +316,35 @@ LEFT JOIN "lm_data" lm
 LEFT JOIN "ar_disbursements_total" ad
     ON ad."rpt_id" = lm."rpt_id"
 """
+
+
+INDUSTRY_LABELS_VIEW = "employer_industry_labels"
+
+
+def industry_labels_view_sql() -> str:
+    """Attach each employer's LLM industry label to every filing it has."""
+    return f"""
+CREATE OR REPLACE VIEW "{INDUSTRY_LABELS_VIEW}" AS
+SELECT
+    l."employer_name",
+    l."naics_2",
+    l."naics_3",
+    l."model",
+    f."case_number",
+    f."date_filed",
+    f."city",
+    f."state"
+FROM "llm_naics_labels" l
+JOIN "filing" f ON f."name" = l."employer_name"
+"""
+
+
+def table_exists(connection: duckdb.DuckDBPyConnection, name: str) -> bool:
+    return bool(
+        connection.execute(
+            "SELECT count(*) FROM duckdb_tables() WHERE table_name = ?", [name]
+        ).fetchone()[0]
+    )
 
 
 def check_tables(connection: duckdb.DuckDBPyConnection) -> None:
@@ -333,7 +383,13 @@ def report(
             ) AS filings_with_finance,
             count(*) FILTER (
                 WHERE "voting_unit_description" IS NOT NULL
-            ) AS voting_unit_rows
+            ) AS voting_unit_rows,
+            count(*) FILTER (
+                WHERE "llm_to_naics" IS NOT NULL
+            ) AS labeled_rows,
+            count(DISTINCT "employer_name") FILTER (
+                WHERE "llm_to_naics" IS NOT NULL
+            ) AS labeled_employers
         FROM "{view_name}"
         """
     ).fetchone()
@@ -348,6 +404,8 @@ def report(
         print(f"Rows with finance match: {row[4]:,}")
         print(f"Filings with at least one finance match: {row[5]:,}")
         print(f"Rows with voting unit description: {row[6]:,}")
+        print(f"Rows with an industry label: {row[7]:,}")
+        print(f"Distinct labeled employers: {row[8]:,}")
 
     fanout = connection.execute(
         f"""
@@ -366,6 +424,25 @@ def report(
         print("Finance reports per election:")
         for n_reports, elections in fanout:
             print(f"  {n_reports:>2} report(s): {elections:,} elections")
+
+
+def report_industry_labels(connection: duckdb.DuckDBPyConnection) -> None:
+    row = connection.execute(
+        f"""
+        SELECT
+            (SELECT count(*) FROM "llm_naics_labels"),
+            (SELECT count(*) FROM "{INDUSTRY_LABELS_VIEW}"),
+            (SELECT count(*) FROM "llm_naics_labels" l
+              WHERE NOT EXISTS (
+                  SELECT 1 FROM "filing" f
+                  WHERE f."name" = l."employer_name"
+              ))
+        """
+    ).fetchone()
+    print(f"\nView: {INDUSTRY_LABELS_VIEW}")
+    print(f"Labeled employers: {row[0]:,}")
+    print(f"Labeled employer/filing rows: {row[1]:,}")
+    print(f"Labels with no matching filing: {row[2]:,}")
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -410,9 +487,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     connection = duckdb.connect(str(db_path))
     try:
         check_tables(connection)
+        has_labels = table_exists(connection, "llm_naics_labels")
         LOG.info("Building view %s ...", view_name)
-        connection.execute(view_sql(view_name))
+        connection.execute(view_sql(view_name, has_labels=has_labels))
         report(connection, view_name, db_path)
+
+        if has_labels:
+            LOG.info("Building view %s ...", INDUSTRY_LABELS_VIEW)
+            connection.execute(industry_labels_view_sql())
+            report_industry_labels(connection)
+        else:
+            LOG.info(
+                "Skipping view %s (llm_naics_labels not found; "
+                "run the labeling pipeline first).",
+                INDUSTRY_LABELS_VIEW,
+            )
     finally:
         connection.close()
 

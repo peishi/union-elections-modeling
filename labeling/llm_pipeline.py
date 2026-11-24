@@ -18,9 +18,11 @@ employer, upserted).  By default already-labeled employers are skipped, so the
 run is resumable; ``--overwrite`` re-queries and replaces existing rows.  The
 old interactive ``naics_labels`` table is dropped.
 
-Primary model is ``gemini-4-argon``; on exhaustion the client switches to
-``claude-haiku-5-5`` and records the model that produced each row.  Token
-consumption is accumulated from the API responses and printed at the end.
+The starting model is ``gemini-4-argon`` by default; choose another with
+``--model`` (``gemini`` or ``claude`` aliases work).  On exhaustion the client
+switches to the fallback model — by default the other one — and records the
+model that produced each row.  Token consumption is accumulated from the API
+responses and printed at the end.
 
 Usage
 -----
@@ -28,6 +30,7 @@ Usage
     uv run python labeling/llm_pipeline.py                    # all employers
     uv run python labeling/llm_pipeline.py --overwrite        # replace labels
     uv run python labeling/llm_pipeline.py --one-step         # single-call mode
+    uv run python labeling/llm_pipeline.py --model claude     # start with Haiku
 """
 
 from __future__ import annotations
@@ -44,7 +47,13 @@ from typing import Any, Sequence
 
 import duckdb
 
-from llm import DEFAULT_BASE_URL, DEFAULT_FALLBACK_MODEL, DEFAULT_MODEL, LLMClient
+from llm import (
+    DEFAULT_BASE_URL,
+    DEFAULT_FALLBACK_MODEL,
+    DEFAULT_MODEL,
+    LLMClient,
+    resolve_model,
+)
 
 LOG = logging.getLogger("naics-pipeline")
 
@@ -65,17 +74,20 @@ CREATE TABLE IF NOT EXISTS "llm_naics_labels" (
     "prompt_tokens"      BIGINT,
     "completion_tokens"  BIGINT,
     "total_tokens"       BIGINT,
+    "election_id"        BIGINT,
+    "voting_unit_id"     BIGINT,
+    "voting_unit_description" VARCHAR,
     "created_at"         TIMESTAMP DEFAULT now(),
     "updated_at"         TIMESTAMP DEFAULT now()
 )
 """
-
 UPSERT_SQL = """
 INSERT OR REPLACE INTO "llm_naics_labels" (
     "employer_name", "naics_2", "naics_3", "rationale", "query_text",
     "raw_response", "model", "prompt_tokens", "completion_tokens",
-    "total_tokens", "updated_at"
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now())
+    "total_tokens", "election_id", "voting_unit_id",
+    "voting_unit_description", "updated_at"
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now())
 """
 
 
@@ -275,7 +287,6 @@ class LabelWriter:
         self._lock = threading.Lock()
         self._connection = duckdb.connect(str(self.db_path))
         with self._lock:
-            self._connection.execute('DROP TABLE IF EXISTS "naics_labels"')
             self._connection.execute(SCHEMA_SQL)
 
     def upsert(self, row: Sequence[Any]) -> None:
@@ -294,7 +305,9 @@ WITH picked AS (
         a."city",
         a."state",
         EXTRACT(YEAR FROM a."date_filed") AS "filing_year",
-        a."voting_unit_description"
+        a."voting_unit_description",
+        a."election_id",
+        a."voting_unit_id"
     FROM "analytical_elections" a
     WHERE a."employer_name" IS NOT NULL
     QUALIFY row_number() OVER (
@@ -304,7 +317,7 @@ WITH picked AS (
     ) = 1
 )
 SELECT "employer_name", "city", "state", "filing_year",
-       "voting_unit_description"
+       "voting_unit_description", "election_id", "voting_unit_id"
 FROM picked
 ORDER BY "employer_name"
 """
@@ -337,6 +350,8 @@ def fetch_employers(
             "state": row[2],
             "filing_year": row[3],
             "voting_unit_description": row[4],
+            "election_id": row[5],
+            "voting_unit_id": row[6],
         }
         for row in rows
         if overwrite or row[0] not in existing
@@ -382,6 +397,9 @@ def _record(
             usage.get("prompt_tokens", 0),
             usage.get("completion_tokens", 0),
             usage.get("total_tokens", 0),
+            employer["election_id"],
+            employer["voting_unit_id"],
+            employer["voting_unit_description"],
         )
     )
 
@@ -468,6 +486,14 @@ def process_one(
 # ---------------------------------------------------------------------------
 
 
+def _model_arg(name: str) -> str:
+    """argparse adapter so a bad alias shows a useful error."""
+    try:
+        return resolve_model(name)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from None
+
+
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Batch-label employers with NAICS 2- and 3-digit codes.",
@@ -486,8 +512,23 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="use a single call with both catalogs instead of two steps",
     )
     parser.add_argument("--workers", type=int, default=4, help="concurrent LLM requests")
-    parser.add_argument("--model", default=DEFAULT_MODEL)
-    parser.add_argument("--fallback-model", default=DEFAULT_FALLBACK_MODEL)
+    parser.add_argument(
+        "--model",
+        default=DEFAULT_MODEL,
+        type=_model_arg,
+        metavar="NAME",
+        help=(
+            f"model to start with: {DEFAULT_MODEL} or {DEFAULT_FALLBACK_MODEL} "
+            "(aliases: gemini, gemini-4, claude, haiku)"
+        ),
+    )
+    parser.add_argument(
+        "--fallback-model",
+        default=argparse.SUPPRESS,
+        type=_model_arg,
+        metavar="NAME",
+        help="model used if the starting model is exhausted (default: the other model)",
+    )
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
     parser.add_argument("--max-tokens", type=int, default=1024)
     parser.add_argument(
@@ -509,16 +550,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         LOG.info("No employers to label (use --overwrite to re-query).")
         return 0
     mode = "one-step" if args.one_step else "two-step"
+    fallback_model = getattr(args, "fallback_model", None) or (
+        DEFAULT_FALLBACK_MODEL if args.model != DEFAULT_FALLBACK_MODEL else DEFAULT_MODEL
+    )
+    if fallback_model == args.model:
+        fallback_model = (
+            DEFAULT_MODEL if args.model != DEFAULT_MODEL else DEFAULT_FALLBACK_MODEL
+        )
     LOG.info(
-        "Labeling %s employers (%s) with %s workers ...",
+        "Labeling %s employers (%s) with %s workers; model=%s fallback=%s",
         len(employers),
         mode,
         args.workers,
+        args.model,
+        fallback_model,
     )
 
     client = LLMClient(
         model=args.model,
-        fallback_model=args.fallback_model,
+        fallback_model=fallback_model,
         base_url=args.base_url,
     )
     writer = LabelWriter(args.db)

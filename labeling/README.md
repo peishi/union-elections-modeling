@@ -19,6 +19,7 @@ Both require `analytical_elections` to exist (run
 uv run python labeling/llm_pipeline.py --limit 20     # small test run
 uv run python labeling/llm_pipeline.py                # every unique employer
 uv run python labeling/llm_pipeline.py --overwrite     # re-query existing rows
+uv run python labeling/llm_pipeline.py --model claude  # start with claude-haiku-5-5
 ```
 
 Options:
@@ -29,12 +30,18 @@ Options:
 --overwrite        # re-query and replace already-labeled employers
 --one-step         # single call with both catalogs (instead of two-step)
 --workers N        # concurrent LLM requests (default 4)
---model NAME       # primary model (default gemini-4-argon)
---fallback-model   # used when the primary is exhausted (default claude-haiku-5-5)
+--model NAME       # model to start with (default gemini-4-argon)
+--fallback-model   # model if the start model is exhausted (default: the other one)
 --base-url URL     # default https://opencode.ai/zen/go/v1
 --max-tokens N     # default 1024
 -v, --verbose
 ```
+
+`--model` (and `--fallback-model`) accept the full IDs `gemini-4-argon` and
+`claude-haiku-5-5`, or the aliases `gemini` / `gemini-4` and `claude` / `haiku`.
+Whichever model you start with, the fallback defaults to the *other* model, e.g.
+`--model claude` starts on `claude-haiku-5-5` and falls back to `gemini-4-argon`.
+Pass `--fallback-model` explicitly to override that.
 
 For each unique employer it sends the employer name, filing year, city, state,
 and bargaining-unit description to the LLM and asks for the **two most likely
@@ -47,8 +54,8 @@ fallback; `gemini-4-argon` does not cache). Results are written incrementally
 (upserted by `employer_name`), so the run is resumable — by default
 already-labeled employers are skipped.
 
-If the primary model is exhausted (HTTP 429 / quota errors) the client switches
-to `claude-haiku-5-5` for the rest of the run; the `model` column records which
+If the starting model is exhausted (HTTP 429 / quota errors) the client switches
+to the fallback model for the rest of the run; the `model` column records which
 model produced each row.
 
 At the end it prints the total token consumption (prompt / completion / total,
@@ -89,6 +96,9 @@ llm_naics_labels (
     prompt_tokens      BIGINT,
     completion_tokens  BIGINT,
     total_tokens       BIGINT,
+    election_id        BIGINT,   -- representative case used for the label
+    voting_unit_id     BIGINT,   -- its bargaining unit
+    voting_unit_description VARCHAR,  -- unit text sent to the model
     created_at         TIMESTAMP DEFAULT now(),
     updated_at         TIMESTAMP DEFAULT now()
 )
@@ -98,6 +108,26 @@ llm_naics_labels (
 code, its title, and the model's probability. The range sectors (`31-33`,
 `44-45`, `48-49`) are kept as-is. Rows are keyed by `employer_name`, so one row
 covers every case of that employer.
+
+The pipeline also records the representative `election_id`, its
+`voting_unit_id`, and the `voting_unit_description` that was used as input.
+Rows written before these columns existed keep `NULL`; re-run those employers
+with `--overwrite` to populate them.
+
+## Relating labels to filings
+
+The transformation step (`transformations/build_analytical_view.py`) connects
+labels to the rest of the database by exact `employer_name`:
+
+- `analytical_elections` gains `naics_2`, `naics_3`, and `llm_to_naics` (the
+  model that produced the label). Unlabeled employers are `NULL`.
+- `employer_industry_labels` attaches a label to every filing for that
+  employer, with `case_number`, `date_filed`, `city`, and `state`. It has one
+  row per labeled employer and filing, so `employer_name` repeats.
+
+Because both are views, labels added after the view is built show up
+automatically. If the views were built before `llm_naics_labels` existed, rerun
+`uv run python transformations/build_analytical_view.py` once to add the join.
 
 ## Models
 

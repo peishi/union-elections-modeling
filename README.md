@@ -51,30 +51,6 @@ union-elections-modeling/
 
 The `training.py` file contains the feature engineering pipelines 
 
-## Industry labeling
-
-The `labeling/` folder assigns 2022 NAICS codes to employers in
-`analytical_elections` for training an industry classifier. Labels are stored
-in `llm_naics_labels`, with each employer's top-2 two-digit sectors and top-2
-three-digit subsectors (plus probabilities, the query text, and token usage).
-
-- `labeling/llm_pipeline.py` batch-classifies every unique employer with an LLM
-  and writes incrementally (resumable, token totals printed at the end):
-
-```bash
-uv run python labeling/llm_pipeline.py --limit 20   # test run
-uv run python labeling/llm_pipeline.py              # all employers
-```
-
-- `labeling/app.py` is a local web UI for reviewing/correcting labels:
-
-```bash
-uv run python labeling/app.py
-# open http://127.0.0.1:8000/
-```
-
-See `labeling/README.md` for details.
-
 ## Requirements
 
 - Python 3.13 (pinned in `.python-version`)
@@ -150,7 +126,8 @@ All output goes to `data/union_elections.duckdb`.
 | `lm_data` | `ingest_union_finances.py` | one row per OLMS annual report |
 | `ar_disbursements_total` | `ingest_union_finances.py` | disbursement breakdowns by category per LM-2 report  |
 | `union_names_crosswalk` | `ingest_union_crosswalk.py` | union name → OLMS report name + parent union + `f_num` |
-| `analytical_elections` | `build_analytical_view.py` | view joining elections to matched union finances |
+| `analytical_elections` | `build_analytical_view.py` | view joining elections to matched union finances and industry labels |
+| `employer_industry_labels` | `build_analytical_view.py` | view attaching each employer's industry label to its filings |
 
 ## Common options
 
@@ -185,6 +162,39 @@ Transformation-specific:
 --view NAME          # name of the view to create (default: analytical_elections)
 ```
 
+## Industry labeling
+
+The `labeling/` folder assigns 2022 NAICS codes to employers in
+`analytical_elections` for training an industry classifier. 
+
+I was originally going to train a neural network or transformer model to try to predict 
+industry based on name and description of voting/bargaining unit, but given that
+names can be somewhat arbitrary, and the voting unit does not always completely give the
+appropriate industry, decided to just make a pipeline that queries LLMs directly to give a 
+prediction for best NAICS industry code, and associated probability. Like a mini-RAG model by 
+supplying the query with the name of the employer, year of NLRB filing, location of filing,
+description of voting unit, and the 20 or 96 NAICS classifications to be classified into.
+
+Labels are stored in `llm_naics_labels`, with each employer's top-2 two-digit sectors and top-2
+three-digit subsectors (plus probabilities, the query text, and token usage).
+
+- `labeling/llm_pipeline.py` batch-classifies every unique employer with an LLM
+  and writes incrementally (resumable, token totals printed at the end):
+
+```bash
+uv run python labeling/llm_pipeline.py --limit 20   # test run
+uv run python labeling/llm_pipeline.py              # all employers
+```
+
+- `labeling/app.py` is a local web UI for reviewing/correcting labels:
+
+```bash
+uv run python labeling/app.py
+# open http://127.0.0.1:8000/
+```
+
+See `labeling/README.md` for details.
+
 ## Analytical view
 
 `analytical_elections` contains one row per completed `RC`/`RM` case and its
@@ -210,6 +220,11 @@ It includes:
   ~1% of filings with several units (multiple locations or crafts of one
   employer) the distinct descriptions are concatenated, ordered by `unit_id`.
   This is intended as text input for industry classification.
+- **`naics_2`, `naics_3`, `llm_to_naics`:** the employer's predicted 2022 NAICS
+  2- and 3-digit codes (JSON arrays of `{code,title,probability}`) and the LLM
+  that produced them, joined from `llm_naics_labels` on `employer_name`. These
+  are `NULL` until the employer has been labeled; because they are joined into
+  the view, new labels appear without rebuilding it.
 - `lm_data` and `ar_disbursements_total` finance fields. The disbursement
   measure is `lm_data.ttl_disbursements`, the total reported on the filing.
   The itemized `ar_disbursements_total` categories are partial and reconcile
@@ -240,6 +255,20 @@ print(
 )
 PY
 ```
+
+### `employer_industry_labels`
+
+This view attaches each employer's label to every filing it has:
+
+```sql
+SELECT employer_name, naics_2, naics_3, case_number, date_filed, city, state
+FROM employer_industry_labels
+```
+
+It is one row per labeled employer and `case_number`, so `employer_name`
+repeats for employers with multiple cases. Use `llm_naics_labels` directly when
+you need one row per employer. It is only created when `llm_naics_labels` has
+been built; the build script logs and skips it otherwise.
 
 ## Modeling
 

@@ -28,6 +28,33 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_BASE_URL = "https://opencode.ai/zen/go/v1"
 DEFAULT_MODEL = "gemini-4-argon"
 DEFAULT_FALLBACK_MODEL = "claude-haiku-5-5"
+
+# Friendly aliases accepted anywhere a model name is passed.  Both models are
+# served by the same OpenAI-compatible endpoint, so they differ only by name.
+MODEL_ALIASES = {
+    "gemini": DEFAULT_MODEL,
+    "gemini-4": DEFAULT_MODEL,
+    DEFAULT_MODEL: DEFAULT_MODEL,
+    "claude": DEFAULT_FALLBACK_MODEL,
+    "haiku": DEFAULT_FALLBACK_MODEL,
+    "claude-haiku": DEFAULT_FALLBACK_MODEL,
+    DEFAULT_FALLBACK_MODEL: DEFAULT_FALLBACK_MODEL,
+}
+
+
+def resolve_model(name: str) -> str:
+    """Map a model alias (``gemini``, ``claude``, ...) to its full model ID."""
+    key = str(name).strip().lower()
+    try:
+        return MODEL_ALIASES[key]
+    except KeyError:
+        known = ", ".join(sorted({*MODEL_ALIASES.values()}))
+        aliases = ", ".join(
+            sorted(alias for alias in MODEL_ALIASES if alias not in MODEL_ALIASES.values())
+        )
+        raise ValueError(
+            f"unknown model {name!r}; choose one of: {known} (aliases: {aliases})"
+        ) from None
 BROWSER_UA = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -110,6 +137,12 @@ class LLMClient:
             )
         self.base_url = base_url.rstrip("/")
         self.model = model
+        if fallback_model and fallback_model == model:
+            LOG.warning(
+                "fallback model equals the starting model (%s); fallback disabled",
+                model,
+            )
+            fallback_model = ""
         self.fallback_model = fallback_model
         self.active_model = model
         self.fallback_active = False
