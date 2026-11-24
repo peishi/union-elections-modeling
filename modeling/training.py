@@ -20,6 +20,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import roc_auc_score
 from sklearn.pipeline import make_pipeline, Pipeline
 
+import json
 import duckdb
 import numpy as np
 import pandas as pd
@@ -36,6 +37,7 @@ SUCCESS_REASON = "Certific. of Representative"
 FEATURES = [
     # filing / election
     "case_type",
+    "election_year",
     "state",
     "unit_size",
     "turnout",
@@ -45,6 +47,7 @@ FEATURES = [
     "log_rep_per_mem",
     "log_admin_per_mem",
     "finance_aff_abbr",
+    "naics_2_code"
 ]
 
 CATEGORICAL_FEATURES = [
@@ -90,6 +93,23 @@ def preprocess_filter_elections(df: pd.DataFrame) -> pd.DataFrame:
     df = df[relevant]
 
     # Note that there are 2 cases with filing_status = 'Open' but with non-null date_closed. Include anyway.
+
+    # Process the NAICS classification from LLMs
+    def _parse(s):
+        try:
+            return json.loads(s)
+        except (TypeError, ValueError):
+            return None
+
+    df["naics_2_parsed"] = df["naics_2"].map(_parse)
+    df["naics_2_conf"] = df["naics_2_parsed"].map(
+        lambda x: x[0]["probability"] if x else np.nan
+    )
+    df["naics_2_code"] = df["naics_2_parsed"].map(
+        lambda x: x[0]["code"] if x else None
+    )
+    # Include only those with confidence >0.8
+    df = df[ df['naics_2_conf'] > 0.8 ]
 
     # NAs in vote cols are actually 0s
     vote_cols = ['votes_for_union', 'votes_against']
@@ -171,6 +191,8 @@ def calc_election_cols(df: pd.DataFrame) -> pd.DataFrame:
     invalid = df['days_to_election'] < 0
     df.loc[invalid, 'days_to_election'] = None
     df.loc[~invalid, 'log_days_to_election'] = np.log(df.loc[~invalid, 'days_to_election'] + 0.1)  # 0.1 day as buffer for 0s
+
+    df['election_year'] = df['election_date'].dt.year.astype('str')
 
     # Turnout
     # Drop rows where eligible != unit size then otherwise use unit size for divisor.
